@@ -1,0 +1,392 @@
+// Nuxia Commerce × 3-Generation Referral - Prisma Schema
+// Policies enforced: T1 원천징수 3.3% · T2 유보후환불 역정산생략 · T3 쿠폰차감후 기준 ·
+//                   T4 포인트 현금성 · T5 탈퇴쿨다운 30일 · T6 임직원 참여불가 ·
+//                   T7 미성년 수동해제 · T8 결손세대 플랫폼 귀속
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum UserRole {
+  CUSTOMER
+  STAFF         // T6: 임직원 - referrer/referee 양쪽 불가
+  STAFF_FAMILY  // T6: 임직원 직계가족 - 동일 제약
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  WITHDRAWN      // T5: 탈퇴 (30일 쿨다운)
+  UNDER_REVIEW   // A3: 다중계정 의심
+  MINOR_HOLD     // T7: 미성년 - payoutEligibility=false 연동
+}
+
+enum ProductStatus {
+  ON_SALE
+  SOLD_OUT
+  HIDDEN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CONFIRMED
+  CANCELED
+  REFUNDED
+  PARTIAL_REFUNDED
+  HOLD
+}
+
+enum LedgerType {
+  EARN
+  REVERT
+}
+
+enum LedgerStatus {
+  PENDING
+  CONFIRMED
+  SUSPENDED_FOR_REVIEW
+  PAID
+  CLAWBACK_REQUESTED
+}
+
+enum PayoutStatus {
+  PENDING
+  WITHHELD
+  PAID
+  FAILED
+  CLAWBACK_REQUESTED
+}
+
+enum AbuseKind {
+  SELF_REFERRAL
+  ANCESTOR_SELF_REFERRAL
+  CIRCULAR
+  DUPLICATE_CI
+  STAFF_REFERRAL
+  WITHDRAW_REJOIN_COOLDOWN
+  RATE_LIMIT
+  BOT_PATTERN
+  SWAP
+  MULTI_ACCOUNT
+}
+
+enum AbuseAction {
+  LOGGED
+  BLOCKED
+  HELD
+  SUSPENDED
+}
+
+// ============================================================================
+// Users & Auth
+// ============================================================================
+
+model User {
+  id                 String     @id @default(cuid())
+  email              String     @unique
+  passwordHash       String?
+  nickname           String
+  // 본인인증 연계정보 (앱 레벨 AES-256-GCM 암호화 저장).
+  // 유일성 검사는 ciHash(결정적 HMAC)로 수행.
+  ci                 String?    // ciphertext
+  ciHash             String?    @unique
+  dateOfBirth        DateTime?
+  phoneNumber        String?    // 암호화
+
+  role               UserRole   @default(CUSTOMER)
+  status             UserStatus @default(ACTIVE)
+  payoutEligibility  Boolean    @default(true)   // T7 미성년: false. 성년 도달로 자동 true 금지.
+
+  referralCode       String     @unique
+  referrerId         String?
+  referrer           User?      @relation("Referral", fields: [referrerId], references: [id])
+  referees           User[]     @relation("Referral")
+  // 3세대 ancestor 캐시 ([1대, 2대, 3대]) - 가입 시 1회 계산
+  ancestorPath       String[]
+
+  withdrawnAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  orders             Order[]
+  ledgers            ReferralLedger[] @relation("Beneficiary")
+  payouts            Payout[]
+  bankAccount        BankAccount?
+  abuseLogs          AbuseLog[]       @relation("PrimaryUser")
+  auditLogs          AuditLog[]       @relation("Actor")
+  sessions           Session[]
+
+  @@index([referrerId])
+  @@index([status])
+  @@index([role])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshHash  String
+  userAgent    String?
+  ipHash       String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model BankAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankCode       String
+  accountNumber  String   // 암호화
+  accountNumberMasked String
+  accountHolder  String
+  verifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+}
+
+// ============================================================================
+// Products
+// ============================================================================
+
+model Product {
+  id          String         @id @default(cuid())
+  sku         String         @unique
+  name        String
+  description String?
+  priceKrw    BigInt
+  stock       Int            @default(0)
+  category    String?
+  images      String[]
+  status      ProductStatus  @default(ON_SALE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  orderItems  OrderItem[]
+  cartItems   CartItem[]
+
+  @@index([status])
+  @@index([category])
+}
+
+// ============================================================================
+// Cart
+// ============================================================================
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+
+  @@unique([cartId, productId])
+}
+
+// ============================================================================
+// Orders
+// ============================================================================
+
+model Order {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  items             OrderItem[]
+
+  // 금액 (원 단위 BigInt) - T3: 쿠폰 차감 후 실결제 금액 기준
+  totalAmountKrw    BigInt        // 레퍼럴 기준 금액 (T4: 포인트 포함=현금성)
+  pointUsedKrw      BigInt        @default(0)
+  discountKrw       BigInt        @default(0)
+  shippingKrw       BigInt        @default(0)
+
+  status            OrderStatus   @default(PENDING_PAYMENT)
+  paymentId         String?       @unique
+  paymentMethod     String?
+
+  confirmedAt       DateTime?
+  canceledAt        DateTime?
+  refundedAt        DateTime?
+  refundedAmountKrw BigInt        @default(0)
+
+  shippingAddress   Json?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  ledgers           ReferralLedger[]
+  refunds           Refund[]
+
+  @@index([userId, status])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id                  String   @id @default(cuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product  @relation(fields: [productId], references: [id])
+  productNameSnapshot String
+  unitPriceKrw        BigInt
+  quantity            Int
+  refundedQuantity    Int      @default(0)
+
+  @@index([orderId])
+}
+
+model Refund {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id])
+  amountKrw     BigInt
+  reason        String
+  isPartial     Boolean  @default(false)
+  ratioBps      Int      // 10000 = 100%
+  lateRefund    Boolean  @default(false)  // T2: 유보 후 환불 (역정산 생략)
+  createdAt     DateTime @default(now())
+  processedAt   DateTime?
+
+  @@index([orderId])
+}
+
+// ============================================================================
+// Referral
+// ============================================================================
+
+model ReferralLedger {
+  id                  String        @id @default(cuid())
+  orderId             String
+  order               Order         @relation(fields: [orderId], references: [id])
+  beneficiaryUserId   String
+  beneficiary         User          @relation("Beneficiary", fields: [beneficiaryUserId], references: [id])
+  generation          Int           // 1|2|3
+  rateBps             Int           // 300 | 500 | 1700
+  amountKrw           BigInt        // EARN: +, REVERT: -
+  type                LedgerType
+  status              LedgerStatus  @default(PENDING)
+  reason              String?
+  createdAt           DateTime      @default(now())
+
+  @@unique([orderId, beneficiaryUserId, generation, type])
+  @@index([beneficiaryUserId, createdAt])
+  @@index([status])
+}
+
+// ============================================================================
+// Payout & Tax config (T1)
+// ============================================================================
+
+model Payout {
+  id                 String       @id @default(cuid())
+  userId             String
+  user               User         @relation(fields: [userId], references: [id])
+  periodStart        DateTime     @db.Date
+  periodEnd          DateTime     @db.Date
+  amountGrossKrw     BigInt
+  amountTaxKrw       BigInt       @default(0)   // T1: 원천징수
+  amountNetKrw       BigInt
+  taxConfigId        String?
+  taxConfig          PayoutTaxConfig? @relation(fields: [taxConfigId], references: [id])
+  status             PayoutStatus @default(PENDING)
+  bankMaskedAccount  String?
+  processedAt        DateTime?
+  failedReason       String?
+  createdAt          DateTime     @default(now())
+
+  @@unique([userId, periodStart, periodEnd])
+  @@index([status])
+}
+
+// T1: 원천징수 설정 - config 대체 안전장치
+model PayoutTaxConfig {
+  id              String   @id @default(cuid())
+  effectiveFrom   DateTime
+  withholdingBps  Int      // 330 = 3.30%
+  kind            String   // 'BUSINESS_INCOME' | 'OTHER_INCOME'
+  note            String?
+  createdAt       DateTime @default(now())
+
+  payouts         Payout[]
+
+  @@index([effectiveFrom])
+}
+
+// ============================================================================
+// Abuse & Audit
+// ============================================================================
+
+model AbuseLog {
+  id               String      @id @default(cuid())
+  kind             AbuseKind
+  severity         Int         @default(3)  // 1~5
+  primaryUserId    String?
+  primaryUser      User?       @relation("PrimaryUser", fields: [primaryUserId], references: [id])
+  relatedUserIds   String[]
+  relatedOrderIds  String[]
+  evidence         Json
+  action           AbuseAction @default(LOGGED)
+  detectedAt       DateTime    @default(now())
+
+  @@index([kind, detectedAt])
+  @@index([primaryUserId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actor       User     @relation("Actor", fields: [actorId], references: [id])
+  action      String   // e.g. 'PAYOUT_RELEASE', 'USER_SUSPEND'
+  target      String?  // e.g. 'User:abc123'
+  reason      String?
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([target])
+}
+
+// ============================================================================
+// Webhook idempotency
+// ============================================================================
+
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  source         String   // 'portone'
+  eventType      String
+  externalId     String   // paymentId etc.
+  eventTimestamp DateTime
+  payload        Json
+  signatureOk    Boolean  @default(false)
+  processedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([source, externalId, eventType, eventTimestamp])
+  @@index([processedAt])
+}
