@@ -752,3 +752,212 @@ if (![OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.SHIPPED, OrderStatus.
 | 날짜 | 항목 |
 |------|------|
 | 2026-04-21 | v1 초안 — qa-integrator. 18건(P0×9 / P1×6 / P2×3). 기준 시나리오 PASS, 어뷰징 6/6 PASS, 그러나 API 계약 drift 다수로 CLEAR 아님. |
+| 2026-04-21 | v2 재검증 — qa-integrator. P0 9/9 RESOLVED, P1 5/5 RESOLVED, P2 미수정(의도적 연기). 새 경계면 이슈 3건 발견(P1×2, P2×1). 기준/어뷰징/원자성 회귀 없음. **CLEAR (with minor follow-up).** |
+
+---
+
+# QA Report v2 (2026-04-21) — Re-verification after fixes
+
+> 작성자: `qa-integrator`
+> 수행: 정적 교차 분석 (v1에서 RESOLUTION 주장된 이슈에 대해 실제 파일 재검증 + 회귀/부작용 점검)
+
+## 재검증 결과 요약
+
+- **P0: 9/9 RESOLVED** — 차단 이슈 전부 해소
+- **P1: 5/5 RESOLVED** (P1-01은 analyst 정책 이슈라 v1에서 backend RESOLUTION 대상이 아니었음; 나머지 P1-02/03/04/05/06 모두 RESOLVED)
+- **P2: 미처리** — P2-01/02/03 세 건은 v1에서 수정 대상 아님, 여전히 OPEN (non-blocking)
+- **회귀 (Regression):**
+  - 기준 시나리오(1,000,000원) 정적 계산: **PASS** — `engine.service.ts::distribute` + `GENERATIONS = [300/500/1700]` + `floorBps` 구조 유지. C=30k/B=50k/A=170k.
+  - 어뷰징 6/6: **PASS** — `user.service.ts`의 A1-direct/A1-ancestor/A2-cycle/A3-dup-ci/T5-30d/T6-STAFF 가드 모두 존재 (v1 이후 변경 없음).
+  - Transaction 원자성: **PASS** — `payment.service.ts::confirm`이 `$transaction(…, Serializable)` 내에서 `order.update` + `referral.distribute` 유지. `refundFull`/`refundPartial` 동일.
+  - UNIQUE 제약: **PASS** — `ReferralLedger @@unique([orderId, beneficiaryUserId, generation, type])`, `User.ciHash @unique`, `WebhookEvent @@unique(...)`, `Order.paymentId @unique` 모두 유지.
+- **새 경계면 이슈:** 3건 (아래 섹션 "v2 신규 발견" 참조). 두 건은 P1, 한 건은 P2.
+- **CLEAR 여부: CLEAR (조건부)** — 18개 v1 이슈는 코드상 전부 해결됨. v2에서 발견된 3건은 런타임 경계 케이스로, Phase 4 통합 릴리스 진입은 가능하되 신규 P1 2건은 릴리스 전 수정 권고.
+
+---
+
+## 검증 매트릭스 v2 (이슈 × 판정)
+
+| # | 제목 | v1 | v2 판정 | 비고 |
+|---|------|----|---|------|
+| P0-01 | Signup `identityVerificationId` | FAIL | **RESOLVED** | `auth.controller.ts::SignupSchema` 가 `identityVerificationId` 필수. `auth.service.ts::signup` L47에서 `identity.get(id)` 후 `verifiedCustomer.ci` 파싱. `SignupRequestSchema`(shared-types)와 1:1. |
+| P0-02 | AuthResponse refresh/identityVerified/age | FAIL | **RESOLVED** | `auth.service.ts` L70-76이 `{accessToken, refreshToken, user: serializeUser(user)}` 반환. `serialize.util.ts::serializeUser` L36-38: `identityVerified: !!u.ciHash`, `age: calcAge(...)` 포함. Session 생성+refreshHash 저장(L114-122). |
+| P0-03 | Dashboard shape | FAIL | **RESOLVED** | `dashboard.service.ts::getSummary` 반환 = `{expectedThisMonthKrw, byGeneration.{gen1,gen2,gen3}, summary.{payable/withheld/reverted + counts}, recent[], tree}`. `DashboardResponseSchema`와 1:1. |
+| P0-04 | KST 월 경계 | FAIL | **RESOLVED** | `startOfMonthKst()` / `startOfNextMonthKst()` L321-338. `Date.UTC(y, m, 1) - 9*3600_000` 으로 KST 1일 00:00 = UTC 전월 말일 15:00 계산. UTC fallback 없음. |
+| P0-05 | Tree 재귀 camelCase | FAIL | **RESOLVED** | `getTree()` L166-234. 반환 객체의 필드 모두 camelCase(`userId`/`nickname`/`referralCode`/`generation`/`blockedReason`/`joinedAt`/`contributionThisMonthKrw`/`myEarningThisMonthKrw`/`children`). 부모-자식 `nodeMap` 연결. `TreeNodeSchema` 1:1. |
+| P0-06 | FE confirm 경로 | FAIL | **RESOLVED** | `checkout/success/page.tsx` L38: `/payments/orders/${orderId}/confirm` + body `{paymentId}`. `payment.controller.ts` L20 `@Post('orders/:orderId/confirm')` 일치. 응답 `PaymentConfirmResponseSchema`. |
+| P0-07 | 서버 발급 paymentId | FAIL | **RESOLVED** | `order.service.ts::create` L93 `payment_${o.id}` 결정론적 생성 + tx 내 update로 `Order.paymentId` 저장 (@unique 유지). 응답 `{orderId, totalAmountKrw, paymentId}` = `CreateOrderResponseSchema`. FE `checkout/page.tsx` L52-58이 서버 paymentId 사용. (※ L62-63 fallback 경로 주의 — 아래 v2 신규 P1 참조) |
+| P0-08 | OrderStatus CANCELLED | FAIL | **RESOLVED** | `schema.prisma` L52 `CANCELLED` (double L). `shared-types/order.ts` L13 `CANCELLED` 동일. Grep 결과 코드 내 `CANCELED`(single L) 잔존 없음 (리포트 텍스트에만 등장). |
+| P0-09 | IdSchema 치환 | FAIL | **RESOLVED** | `shared-types/common.ts` L50 `IdSchema = z.string().regex(/^c[a-z0-9]{24,}$/)`. `z.string().uuid()` grep → shared-types/src 아래 0건 (주석만). user/order/referral/product/payment 전반에서 `IdSchema` 사용 확인. |
+| P1-02 | `parsePortOneTotal` | OBSERVE | **RESOLVED** | `payment.service.ts` L219-242 `parsePortOneTotal(v)` — number는 `isFinite && isInteger`, string은 `/^-?\d+$/`, 기타 타입은 `BadRequestException('AMOUNT_INVALID')`. 소수/NaN/Infinity/객체 모두 거부. |
+| P1-03 | 웹훅 bypass 가드 | WARN | **RESOLVED** | `portone.webhook.controller.ts` L46-47: `ALLOW_UNSIGNED_WEBHOOK === '1' && NODE_ENV !== 'production'` 두 조건 모두 참일 때만 bypass. production에서는 `ALLOW_UNSIGNED_WEBHOOK`=1이어도 거절. `.env.example` L36-37에 주석 있음. |
+| P1-04 | `coerceAmountToNumber` | WARN | **RESOLVED** | `portone.client.ts` L68-96. `typeof === 'bigint'` + `amount > 0n` + `amount <= MAX_SAFE_INTEGER` + `Number.isFinite && isInteger` 모두 통과한 경우만 `Number()` 변환. 아니면 `CANCEL_AMOUNT_INVALID`. |
+| P1-05 | Product 필드 확장 | FAIL | **RESOLVED** | Prisma `Product` 모델(L181-209)에 `slug @unique`, `listPriceKrw`, `salePriceKrw`, `discountPct`, `brandName`, `avgRating`, `reviewCount`, `referralPreviewBps` 모두 존재. `ProductStatus` enum에 `DRAFT/ACTIVE/SOLD_OUT/HIDDEN/ARCHIVED` — shared-types와 일치. `ProductSchema`와 필드 대응. (※ v2 신규 P2 참조) |
+| P1-06 | 환경변수 fail-fast | WARN | **RESOLVED** | `main.ts::assertRequiredEnv()` L17-32이 `JWT_SECRET`/`DATABASE_URL`/`PORTONE_API_SECRET` 부재 시 `process.exit(1)`. `JWT_SECRET.length < 32`도 종료. `auth.module.ts::requireJwtSecret()` + `jwt.strategy.ts::requireJwtSecret()` 에서도 throw. `?? 'dev-secret'` grep = 주석만. |
+
+## 이슈별 판정 상세
+
+### P0-01 Signup identityVerificationId — RESOLVED
+**증거:** `apps/api/src/modules/auth/auth.controller.ts` L10-17 (`SignupSchema` 필드 = `email/password/nickname/identityVerificationId/referralCode?/deviceFingerprint?`); `apps/api/src/modules/auth/auth.service.ts` L47-54 (`identity.get(id)` → `verification.verifiedCustomer.ci`); `apps/api/src/modules/auth/identity.client.ts` L33-44 (REST call `GET https://api.portone.io/identity-verifications/{id}`); `user.service.ts` L43-45 (`hashCi`+`encryptCi` 저장).
+**잔여 리스크:** `identity.client.ts::apiSecret = process.env.PORTONE_API_SECRET ?? ''` — 이미 `main.ts::assertRequiredEnv`가 부재 시 종료하므로 런타임에는 OK. 다만 identity.client 내 `??  ''` 패턴이 모듈 import 시 평가되므로 테스트 환경에서 주의.
+
+### P0-02 AuthResponse refreshToken / identityVerified / age — RESOLVED
+**증거:** `auth.service.ts::signup` L70-76 응답 `{accessToken, refreshToken, user: serializeUser(user)}`. `login` L90-96도 동일 형태. `issueRefreshToken` L109-124에서 opaque 32-byte base64url 생성, `Session.refreshHash`에 sha256 저장, TTL 파싱(`parseTtl`, default 14d). `serialize.util.ts::serializeUser` L26-42에서 passwordHash/ci/ciHash/phoneNumber 제거 + `identityVerified = !!u.ciHash` + `age = calcAge(dateOfBirth)` + `ancestorPath default []` + `payoutEligibility`. `user.service.ts::getMe` L178-184도 동일 serializer 사용 — `/users/me` = `AuthResponse.user` shape.
+**잔여 리스크:** 없음 (shared-types `UserSchema` 모든 필드 매칭: id/email/nickname/referralCode/referrerId/ancestorPath/role/status/identityVerified/payoutEligibility/age/createdAt/updatedAt).
+
+### P0-03 Dashboard shape — RESOLVED
+**증거:** `dashboard.service.ts::getSummary` L23-126이 한 객체에 모든 필드 반환. 수식 검증:
+- `gen1.rateBps: 300 as const`, `gen2.rateBps: 500`, `gen3.rateBps: 1700` — shared-types `z.literal(300|500|1700)` 통과.
+- `byGeneration.genN.orderCount` = `findMany({distinct:['orderId']}).length`.
+- `summary.revertedKrw` = `|revertSumNeg|` 양수 직렬화. shared-types `BigIntStringSchema`가 음수 문자열도 허용하나, 표시 규약에 맞춰 양수화 — 적절.
+- `tree`는 재귀 `TreeNodeSchema` 루트.
+**잔여 리스크:** `expectedThisMonthKrw = earnSum + revertSumNeg` — REVERT가 음수로 저장되면 순액이 음수가 될 수 있고 `BigIntStringSchema` 는 `-?\d+` 허용하므로 FE 파싱 OK. 단 UI 표시 시 음수 대응 필요(표시측 책임, OPEN 아님).
+
+### P0-04 KST 월 경계 — RESOLVED
+**증거:** `dashboard.service.ts` L321-338 `KST_OFFSET_MS = 9 * 3_600_000`. `startOfMonthKst`는 `now + 9h` → KST clock 획득 → `Date.UTC(y,m,1) - 9h` 로 UTC epoch 산출. 실측:
+- `now = 2026-05-01T00:30+09:00 (=2026-04-30T15:30Z)`
+- `kst = 2026-05-01T00:30Z` → `y=2026, m=4 (0-indexed May)`
+- `Date.UTC(2026,4,1) = 2026-05-01T00:00Z` → `- 9h = 2026-04-30T15:00Z` ✅ (KST 5월 1일 00:00)
+- 따라서 `createdAt >= 2026-04-30T15:00Z`가 `5월 집계` — 올바름.
+- DST 없는 Asia/Seoul 고정 오프셋이므로 date-fns-tz 없이도 정확.
+**잔여 리스크:** 없음.
+
+### P0-05 Tree 재귀 camelCase — RESOLVED
+**증거:** `dashboard.service.ts::getTree` L166-234. CTE로 평탄 rows 수집 후 `nodeMap`으로 id→node 생성, 두 번째 루프에서 `parent.children.push(child)`. 반환 `TreeNodeDto` 인터페이스(L265-275)는 `TreeNodeSchema`와 필드/타입 1:1. `generation: 0|1|2|3` 일치, `blockedReason: 'STAFF'|'SUSPENDED'|'WITHDRAWN'|'SELF_REFERRAL'|null` 매핑(L277-286) — 단 `SELF_REFERRAL`은 `deriveBlockedReason`에서 생성되지 않음(셀프레퍼럴은 가입시점에 차단되어 DB에 없으므로 정상). `snake_case` 흔적 없음.
+**잔여 리스크:** 없음 (설계상 트리 깊이 3 유지 `WHERE s.depth < 3`).
+
+### P0-06 FE 결제 confirm 경로 — RESOLVED
+**증거:** `checkout/success/page.tsx` L37-41: `api.post('/payments/orders/${encodeURIComponent(orderId)}/confirm', { paymentId }, PaymentConfirmResponseSchema)`. `payment.controller.ts` L20 `@Post('orders/:orderId/confirm')` + L24 `ConfirmPaymentSchema = { paymentId: string.min(1) }`. 경로/body/응답 타입 모두 일치.
+**잔여 리스크:** L51-55 `.catch(() => { setStatus('success'); clearCart() })` — 백엔드 실패 시에도 성공 UI 표시. 데모 편의용이며 실운영에는 부적절 (아래 v2 신규 P2 참조).
+
+### P0-07 서버 발급 paymentId — RESOLVED
+**증거:** `order.service.ts::create` L60-100: `prisma.$transaction` 내 `tx.order.create` 후 `paymentId = 'payment_' + o.id` 생성 → `tx.order.update({data: {paymentId}})` — 같은 tx에서 커밋. `Order.paymentId @unique` 제약(schema.prisma L253). 응답 L103-107 `{orderId, totalAmountKrw, paymentId}` — `CreateOrderResponseSchema` 그대로. `payment.service.ts::confirm` L51-56이 body.paymentId ≠ DB.paymentId 일 때 `PAYMENT_ID_MISMATCH`. FE `checkout/page.tsx` L52-58이 `order.paymentId` 사용(서버값).
+**잔여 리스크:** FE L59-64 fallback (`crypto.randomUUID()` + `TEMP_ORDER`) — 아래 v2 신규 P1 참조.
+
+### P0-08 OrderStatus CANCELLED — RESOLVED
+**증거:** `schema.prisma` L52 `CANCELLED` (double L) + 주석 L51에 의도 명시. `shared-types/order.ts` L13 동일. `payment.service.ts::buildConfirmResponse` statusMap L98-102에 `CANCELLED` 사용. Grep `CANCELED` 코드 잔존 0건 (리포트/문서/스킬 파일에만 등장).
+**잔여 리스크:** `03b_backend_api_contract.md`에 `CANCELED` 텍스트 잔존 (문서-코드 드리프트, non-blocking, 문서 작업).
+
+### P0-09 IdSchema 치환 — RESOLVED
+**증거:** `common.ts` L50 `IdSchema = z.string().regex(/^c[a-z0-9]{24,}$/)`. shared-types/src 아래 `z.string().uuid()` grep = 0건 (주석 한 줄만). user.ts/order.ts/referral.ts/product.ts/payment.ts 모두 `import { IdSchema }` 사용 확인.
+**잔여 리스크:** `Id` 정규식 `/^c[a-z0-9]{24,}$/` — Prisma cuid 기본 25자(c+24자)이므로 정확히 매칭. Prisma가 cuid2로 교체될 경우(`c` 제거, 24자) 재조정 필요. 현재는 문제 없음.
+
+### P1-02 parsePortOneTotal — RESOLVED
+**증거:** `payment.service.ts` L219-242 export 함수. number는 `Number.isFinite && Number.isInteger`, string은 `/^-?\d+$/`, 기타 타입은 `AMOUNT_INVALID` throw. 소수/NaN/Infinity/`{}` 모두 거절. `1000.00` 문자열도 regex 탈락 → 거절.
+
+### P1-03 웹훅 bypass 가드 — RESOLVED
+**증거:** `portone.webhook.controller.ts` L46-47 `allowUnsigned = process.env.ALLOW_UNSIGNED_WEBHOOK === '1' && process.env.NODE_ENV !== 'production'`. production에서는 flag=1이어도 `!verifyHmac(...)` 시 `throw` (L52-54).
+
+### P1-04 coerceAmountToNumber — RESOLVED
+**증거:** `portone.client.ts` L68-96. 4단 가드: (1) `typeof === 'bigint'`, (2) `> 0n`, (3) `<= MAX_SAFE_INTEGER`, (4) `Number.isFinite && isInteger`. 전부 통과 후에만 `Number()` 리턴. `opts.amount` 미지정 경로(refundFull 일부)는 body에 포함되지 않으므로 영향 없음.
+
+### P1-05 Product 필드 확장 — RESOLVED
+**증거:** `schema.prisma::Product` L181-209에 모든 필드 추가. `ProductSchema` (shared-types)와 대조:
+| shared-types | Prisma | Match |
+|------|------|------|
+| id | id cuid | ✓ |
+| slug | slug @unique | ✓ |
+| name | name | ✓ |
+| brandName: nullable | brandName String? | ✓ |
+| categoryId: IdSchema.nullable | **category String?** | ⚠ 타입 mismatch (v2 신규 P2) |
+| status: ProductStatus enum | status ProductStatus | ✓ |
+| listPriceKrw | listPriceKrw BigInt | ✓ |
+| salePriceKrw | salePriceKrw BigInt | ✓ |
+| discountPct | discountPct Int @default(0) | ✓ |
+| stock: int.nullable | stock Int (not null) | ⚠ 경미한 드리프트 (v2 신규 P2) |
+| images: ProductImage[]≥1 | images String[] | ✓ (service에서 변환) |
+| description | description @default("") | ✓ |
+| referralPreviewBps | referralPreviewBps Int? @default(2500) | ✓ |
+| avgRating | avgRating Float | ✓ |
+| reviewCount | reviewCount Int | ✓ |
+
+### P1-06 환경변수 fail-fast — RESOLVED
+**증거:** `main.ts::assertRequiredEnv` L17-32이 bootstrap 최상단 호출. `JWT_SECRET`/`DATABASE_URL`/`PORTONE_API_SECRET` 부재 시 `process.exit(1)` + 로그. `JWT_SECRET.length < 32`도 종료. `auth.module.ts::requireJwtSecret` + `jwt.strategy.ts::requireJwtSecret` 에서도 `throw new Error('JWT_SECRET must be set (>= 32 chars). Aborting.')`. `?? 'dev-secret'` 코드 잔존 0건.
+
+## 회귀 테스트 (v1 PASS 항목)
+
+### 1. 기준 시나리오 (1,000,000원 × C/B/A) — PASS
+`engine.service.ts::GENERATIONS` L7-11 그대로 `[{gen:1,bps:300},{gen:2,bps:500},{gen:3,bps:1700}]`. `distribute()` L60-134에서 `floorBps(totalAmountKrw, rule.bps)` 계산:
+- gen=1: `(1_000_000n * 300n) / 10_000n = 30_000n` → C
+- gen=2: `(1_000_000n * 500n) / 10_000n = 50_000n` → B
+- gen=3: `(1_000_000n * 1700n) / 10_000n = 170_000n` → A
+- 합계 250,000원 = 25% ✓
+
+### 2. 어뷰징 6종 — 6/6 PASS (변경 없음)
+`user.service.ts::createUser` (`$transaction(Serializable)` 내):
+- A1 direct: L106 `referrer.ciHash === ciHash` → `REFERRAL_SELF_FORBIDDEN`
+- A1 ancestor: L115-127 `referrer.ancestorPath`에서 ciHash 매칭 → `REFERRAL_SELF_FORBIDDEN`
+- A2 cycle: L164-170 post-insert `ancestorPath.includes(created.id)` → `REFERRAL_CYCLE_DETECTED`
+- A3 dup-ci: L51-77 + DB `User.ciHash @unique` → `USER_CI_DUPLICATE`
+- T5 30d: L53-69 `existing.status === 'WITHDRAWN'` + withdrawnAt 경과 비교 → `WITHDRAW_REJOIN_COOLDOWN`
+- T6 STAFF: L94-103 `referrer.role ∈ (STAFF, STAFF_FAMILY)` → `STAFF_REFERRAL_FORBIDDEN` + engine.service.ts L67-70/L86-92 추가 방어
+
+### 3. Transaction 원자성 — PASS
+- `payment.service.ts::confirm` L77-91: `prisma.$transaction(async (tx) => { tx.order.update(PAID) → referral.distribute(tx, ...) }, { isolationLevel: Serializable })`
+- `refundFull` L129-155, `refundPartial` L178-203: 모두 Serializable + `order.update` + `refund.create` + `referral.revert(tx,...)` 동일 tx
+- `user.service.ts::createUser` L48-175: Serializable 유지
+
+### 4. UNIQUE 제약 — PASS
+- `User.ciHash @unique` (schema L111)
+- `ReferralLedger @@unique([orderId, beneficiaryUserId, generation, type])` (L326)
+- `WebhookEvent @@unique([source, externalId, eventType, eventTimestamp])` (L419)
+- `Order.paymentId @unique` (L253) — 신규 보강(P0-07 해결 과정)
+- `User.email @unique`, `User.referralCode @unique`, `Product.slug @unique` 추가 유지
+
+## v2 신규 발견 이슈
+
+### [v2-P1-NEW-01] FE checkout fallback이 비-cuid paymentId / "TEMP_ORDER" orderId 생성 — IdSchema 파싱 실패 리스크
+**소유자:** frontend
+**증상:** `apps/web/app/(shop)/checkout/page.tsx` L59-64 — `POST /orders` 가 실패하면 `orderId = 'TEMP_ORDER'` + `paymentId = \`order_${crypto.randomUUID()}\`` 로 fallback. 이어서 `success` 페이지로 `orderId=TEMP_ORDER` 전달 → `api.post('/payments/orders/TEMP_ORDER/confirm', ...)` 는 BE에서 `PAYMENT_ID_MISMATCH` 또는 `ORDER_NOT_FOUND`. 더 심각하게는, 만일 FE가 `CreateOrderResponseSchema.safeParse` 로 검증할 경우 `'TEMP_ORDER'` 는 `IdSchema`(`/^c[a-z0-9]{24,}$/`) 불일치로 이미 reject.
+**재현:**
+1. api.post가 네트워크 오류로 실패
+2. catch 블록 진입 → orderId='TEMP_ORDER'
+3. success 페이지 confirm 호출 → BE 404
+**원인 가설:** v1에서 "데모 편의용 mock" 로 의도적으로 남긴 fallback이지만, v2에서 `IdSchema` 가 엄격해져 FE 내 일관성 깨짐.
+**관련 파일:** `apps/web/app/(shop)/checkout/page.tsx:59-64`, `packages/shared-types/src/common.ts:50`
+**제안:** catch에서 fallback 대신 toast 에러 + return. 데모용 경로는 별도 `NEXT_PUBLIC_DEMO=1` flag로 분리.
+**판정:** **NEW P1** (신규)
+
+### [v2-P1-NEW-02] CreateOrderRequestSchema(shared-types)는 shippingAddress 필수이나 BE/FE 모두 미사용 — contract drift
+**소유자:** backend or frontend (계약 확정 필요)
+**증상:** `shared-types/order.ts::CreateOrderRequestSchema` L65-79는 `shippingAddress: ShippingAddressSchema`를 **필수**로 요구. BE `order.controller.ts::CreateOrderSchema` L14-29는 `shippingAddress: z.any().optional()`. FE `checkout/page.tsx::createOrderPayload` L43-48은 `shippingAddress` 미전송. 두 계약이 정반대 방향으로 drift.
+**재현:** FE가 shared-types `CreateOrderRequestSchema.parse(payload)` 로 클라이언트 validate하면 실패 (shippingAddress missing). 현재 FE는 shared-types parse를 사용하지 않고 직접 전송하므로 런타임은 동작하나, 타입 계약상 drift.
+**원인 가설:** P0-07 수정 시 BE가 `.optional()`로 완화했지만 shared-types는 v1 초기 엄격 설계 유지.
+**관련 파일:** `packages/shared-types/src/order.ts:65-79`, `apps/api/src/modules/order/order.controller.ts:14-29`, `apps/web/app/(shop)/checkout/page.tsx:43-48`
+**제안:** (A) shared-types `CreateOrderRequestSchema.shippingAddress` 를 `.optional()` 로 완화 + UI에서 배송지 입력 구현 전까지 수용, 또는 (B) FE 체크아웃에서 shippingAddress 수집 및 전송. (A) 권장 (현 스프린트 범위).
+**판정:** **NEW P1**
+
+### [v2-P2-NEW-03] 기타 소폭 드리프트 (serializeProduct placeholder, checkout success catch 성공 처리 등)
+**소유자:** frontend / backend (minor)
+**증상:**
+- `product.service.ts::serializeProduct` L55-57: 이미지 배열이 비었을 때 `[{ url: '', alt: '' }]` placeholder 추가. 그러나 `ProductImageSchema.url = z.string().url()` 이므로 빈 문자열은 런타임 zod 검증 실패. Prisma `Product.images: String[]` (빈 배열 가능) → shared-types parse 실패 가능.
+- `schema.prisma::Product.category: String?` vs `ProductSchema.categoryId: IdSchema.nullable` — BE는 자유 문자열, shared-types는 cuid 요구. 현재 `serializeProduct` L49가 `categoryId: null as string | null` 하드코드라 우회되어 있음(런타임 OK이나 의미상 드리프트).
+- `schema.prisma::Product.stock: Int (not null, default 0)` vs `ProductSchema.stock: int.nullable` — BE는 항상 숫자, FE는 null 허용. serializeProduct에서 `stock ?? null` 이지만 not-null이라 항상 숫자 → 드리프트 무해하지만 의미 불일치.
+- `checkout/success/page.tsx` L51-55 `.catch(() => { setStatus('success'); clearCart(); })` — 백엔드 오류여도 UI 성공 처리. 데모용이나 실운영 위험.
+**영향:** 현재 시드 데이터가 이미지 최소 1장을 채우면 안 나타남. 운영에는 안전 가드 추가 권장.
+**관련 파일:** `apps/api/src/modules/product/product.service.ts:43-65`, `apps/web/app/(shop)/checkout/success/page.tsx:51-55`, `apps/api/prisma/schema.prisma:192-197`
+**판정:** **NEW P2** (non-blocking)
+
+## 경계면 버그 7패턴 재적용 결과 (v2)
+
+| 패턴 | v1 | v2 |
+|-----|----|----|
+| 1. Shape Drift | Heavy | **Light** — v1 P0 8건이 해결되어 주요 drift 제거. 신규 drift 2건(v2-P1-NEW-02, v2-P2-NEW-03)은 경미 |
+| 2. 단위 불일치 | 약함 | **해소** — `parsePortOneTotal` + `coerceAmountToNumber` 방어 |
+| 3. Nullable 오해 | 경계적 | 경계적 — v2-P2-NEW-03의 `stock`/`categoryId` 미세 차이 |
+| 4. 상태 전이 | 경계적 | **해소** — CANCELLED 통일, P2-03은 별도 OPEN |
+| 5. 이중 진실의 원천 | 경계적 | 경계적 — P1-01 (totalKrw 정의) 여전히 analyst 확정 대기 |
+| 6. Off-by-N | 없음 | 없음 |
+| 7. 비동기 이벤트 | 양호 | 양호 |
+
+## 다음 액션 권장
+
+- **CLEAR. Phase 4 통합 릴리스 진입 가능.**
+- **단, 릴리스 전 수정 권장 (블로커 아님):**
+  1. `v2-P1-NEW-01` — checkout fallback 제거 또는 DEMO flag 분리 (frontend)
+  2. `v2-P1-NEW-02` — `CreateOrderRequestSchema.shippingAddress` 를 optional 로 완화하거나 FE 배송지 입력 구현 (analyst 방향 확정 후 frontend/backend)
+- **추가 연기 가능:**
+  - v2-P2-NEW-03 (경미한 Product 필드 드리프트)
+  - v1 P1-01 (`totalKrw` 정의 확정 — analyst)
+  - v1 P2-01/02/03 (기존 OPEN 유지)
+- **마이그레이션 주의:** schema.prisma 변경(OrderStatus CANCELED→CANCELLED, Product 컬럼 추가)은 `prisma migrate dev` 필요. staging에서 우선 실행 후 production 배포.
