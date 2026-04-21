@@ -74,7 +74,8 @@ export const CreateOrderRequestSchema = z.object({
     .min(1),
   couponId: z.string().optional(),
   pointUsedKrw: BigIntStringSchema.default('0'),
-  shippingAddress: ShippingAddressSchema,
+  // MVP: 배송지 입력 UI 구현 전까지 optional. 실제 배송 기능 도입 시 required 전환.
+  shippingAddress: ShippingAddressSchema.optional(),
 });
 export type CreateOrderRequest = z.infer<typeof CreateOrderRequestSchema>;
 

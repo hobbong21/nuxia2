@@ -25,6 +25,7 @@ export default function CheckoutSuccessPage() {
   const orderId = params.get('orderId') ?? '';
 
   const [status, setStatus] = React.useState<'pending' | 'success' | 'fail'>('pending');
+  const [retryTick, setRetryTick] = React.useState(0);
 
   React.useEffect(() => {
     if (!paymentId || !orderId) {
@@ -44,16 +45,20 @@ export default function CheckoutSuccessPage() {
           setStatus('success');
           clearCart();
         } else {
+          // PAID 가 아닌 모든 상태(FAILED/CANCELLED/PENDING 등)는 사용자 관점에서 실패로 처리.
           setStatus('fail');
-          toast.show(res.message ?? '결제 확인 실패', 'error');
+          toast.show(res.message ?? `결제 확인 실패 (${res.status})`, 'error');
         }
       })
-      .catch(() => {
-        // 백엔드 미구현 시에도 UX 유지
-        setStatus('success');
-        clearCart();
+      .catch((err) => {
+        // 백엔드 호출 실패(네트워크/서버 오류) 는 절대 "성공" 으로 처리하지 않는다.
+        setStatus('fail');
+        toast.show(
+          '결제 확인 중 오류가 발생했습니다. 고객센터(1588-0000)로 문의해 주세요.',
+          'error',
+        );
       });
-  }, [paymentId, orderId, clearCart, toast]);
+  }, [paymentId, orderId, clearCart, toast, retryTick]);
 
   return (
     <main className="flex min-h-[80vh] flex-col items-center justify-center gap-base px-base text-center">
@@ -89,11 +94,28 @@ export default function CheckoutSuccessPage() {
         <>
           <h1 className="text-h2">결제 확인에 실패했습니다</h1>
           <p className="text-body text-muted-foreground">
-            잠시 후 다시 시도하거나 고객센터에 문의해 주세요.
+            결제는 진행되었을 수 있으나 서버에서 확정 처리를 완료하지 못했습니다.
+            <br />
+            중복 결제를 방지하기 위해 다시 결제를 시도하기 전 고객센터에 먼저 문의해 주세요.
           </p>
-          <Button variant="accent" size="lg" onClick={() => router.push('/cart')}>
-            장바구니로 돌아가기
-          </Button>
+          <p className="text-body-sm text-muted-foreground">
+            고객센터 1588-0000 (평일 09:00 ~ 18:00)
+          </p>
+          <div className="flex gap-sm">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => {
+                setStatus('pending');
+                setRetryTick((n) => n + 1);
+              }}
+            >
+              다시 시도
+            </Button>
+            <Button variant="accent" size="lg" onClick={() => router.push('/mypage/orders')}>
+              주문 내역 확인
+            </Button>
+          </div>
         </>
       )}
     </main>

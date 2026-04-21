@@ -56,11 +56,12 @@ export default function CheckoutPage() {
         );
         orderId = order.orderId;
         paymentId = order.paymentId;
-      } catch {
-        // 백엔드 미구현/네트워크 실패 시에도 데모가 동작하도록 임시 값으로 fallback.
-        // 실제 배포에서는 에러 토스트 후 중단되어야 함.
-        orderId = 'TEMP_ORDER';
-        paymentId = `order_${crypto.randomUUID()}`;
+      } catch (e) {
+        // 엄격 모드: 주문 생성 실패 시 데모 fallback을 만들지 않고 즉시 중단.
+        // (cuid 규격을 지키지 않는 임시 ID는 IdSchema 검증에 실패하고, confirm 단계에서
+        //  PAYMENT_ID_MISMATCH / ORDER_NOT_FOUND 로 이어지므로 안전하지 않음.)
+        toast.show('주문 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.', 'error');
+        return;
       }
 
       // 2) PortOne 결제 요청 — 서버에서 받은 paymentId 그대로 사용.

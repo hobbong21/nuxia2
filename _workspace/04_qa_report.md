@@ -961,3 +961,13 @@ if (![OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.SHIPPED, OrderStatus.
   - v1 P1-01 (`totalKrw` 정의 확정 — analyst)
   - v1 P2-01/02/03 (기존 OPEN 유지)
 - **마이그레이션 주의:** schema.prisma 변경(OrderStatus CANCELED→CANCELLED, Product 컬럼 추가)은 `prisma migrate dev` 필요. staging에서 우선 실행 후 production 배포.
+
+---
+
+**RESOLUTION v2.1 (2026-04-21):**
+- v2-P1-NEW-01: apps/web/app/(shop)/checkout/page.tsx fallback 제거, 에러 토스트로 전환 (엄격 모드). `TEMP_ORDER`/`crypto.randomUUID()` 제거 — IdSchema 위반 차단.
+- v2-P1-NEW-02: packages/shared-types/src/order.ts `shippingAddress: ShippingAddressSchema.optional()`. apps/api/src/modules/order/order.controller.ts 의 `z.any().optional()` → 로컬 복제된 `ShippingAddressSchema.optional()` 로 타입 일치 (monorepo import 파이프라인 미연결로 로컬 복제 + 동기화 주석).
+- v2-P2-NEW-03:
+  - `product.service.ts::serializeProduct` 이미지 placeholder를 `https://placehold.co/600x600?text=No+Image` 로 교체 (빈 문자열 URL 제거, ProductImageSchema.url 통과 확보).
+  - shared-types `ProductSchema.categoryId` → `categoryName: z.string().nullable().optional()` 로 변경, `serializeProduct` 가 `p.category` 를 직접 매핑.
+  - `checkout/success/page.tsx` catch 분기에서 `setStatus('success')` 제거 → `setStatus('fail')` + 에러 토스트 + 고객센터 안내 + "다시 시도"/"주문 내역" 버튼 추가. `status !== 'PAID'` 도 실패 취급.

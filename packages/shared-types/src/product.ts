@@ -23,7 +23,9 @@ export const ProductSchema = z.object({
   slug: z.string().min(1),
   name: z.string().min(1),
   brandName: z.string().nullable(),
-  categoryId: IdSchema.nullable(),
+  // Prisma `Product.category` (자유 문자열, 카테고리 이름) 와 의미 일치.
+  // categoryId(cuid) 는 Category 모델이 도입되면 별도 필드로 추가.
+  categoryName: z.string().nullable().optional(),
   status: ProductStatusSchema,
   /** 정가 (KRW, BigIntString) */
   listPriceKrw: BigIntStringSchema,

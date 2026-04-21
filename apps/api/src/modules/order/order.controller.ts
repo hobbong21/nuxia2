@@ -11,6 +11,17 @@ const BigIntCoercion = z
   .union([z.string(), z.number()])
   .transform((v) => (v == null ? undefined : BigInt(v as any)))
 
+// shared-types `ShippingAddressSchema` 와 동일 shape. BE 모노레포 import 파이프라인이
+// 아직 연결되지 않아 로컬 복제. shared-types 변경 시 여기도 동기화 필요.
+const ShippingAddressSchema = z.object({
+  recipientName: z.string().min(1),
+  phone: z.string().min(1),
+  zipCode: z.string().min(1),
+  address1: z.string().min(1),
+  address2: z.string().default(''),
+  memo: z.string().optional(),
+})
+
 export const CreateOrderSchema = z.object({
   items: z
     .array(
@@ -25,7 +36,8 @@ export const CreateOrderSchema = z.object({
   pointUsedKrw: BigIntCoercion.optional(),
   couponDiscountKrw: BigIntCoercion.optional(),
   shippingFeeKrw: BigIntCoercion.optional(),
-  shippingAddress: z.any().optional(),
+  // shared-types 와 동기화: MVP는 optional, 구조는 ShippingAddressSchema 따름.
+  shippingAddress: ShippingAddressSchema.optional(),
 })
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>
 
