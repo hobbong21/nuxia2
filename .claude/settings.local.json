@@ -4,7 +4,9 @@
       "Read(//c/I-programing/harness-main/harness-main/**)",
       "Read(//c/I-programing/harness-main/harness-main/skills/harness/**)",
       "Bash(mkdir -p \"C:/I-programing/nuxia2/.claude/skills\")",
-      "Bash(cp -r \"C:/I-programing/harness-main/harness-main/skills/harness\" \"C:/I-programing/nuxia2/.claude/skills/harness\")"
+      "Bash(cp -r \"C:/I-programing/harness-main/harness-main/skills/harness\" \"C:/I-programing/nuxia2/.claude/skills/harness\")",
+      "Bash(ssh -T git@github.com)",
+      "Bash(grep -E \"^\\(id_|.*\\\\.pub$\\)\")"
     ]
   }
 }
