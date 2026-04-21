@@ -5,19 +5,26 @@ import { JwtAuthGuard } from '../../common/guards/auth.guard'
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe'
 import { OrderService } from './order.service'
 
+// shared-types `CreateOrderRequestSchema` 호환. pointUsedKrw / couponDiscountKrw /
+// shippingFeeKrw 는 BigIntString (decimal integer string) 으로 받되 number 도 허용.
+const BigIntCoercion = z
+  .union([z.string(), z.number()])
+  .transform((v) => (v == null ? undefined : BigInt(v as any)))
+
 export const CreateOrderSchema = z.object({
   items: z
-    .array(z.object({ productId: z.string(), quantity: z.number().int().min(1) }))
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        quantity: z.number().int().min(1),
+        optionSummary: z.string().optional(),
+      }),
+    )
     .min(1),
-  // BigInt in JSON comes as string (we serialize to string).
-  pointUsedKrw: z
-    .union([z.string(), z.number()])
-    .optional()
-    .transform((v) => (v == null ? undefined : BigInt(v as any))),
-  discountKrw: z
-    .union([z.string(), z.number()])
-    .optional()
-    .transform((v) => (v == null ? undefined : BigInt(v as any))),
+  couponId: z.string().optional(),
+  pointUsedKrw: BigIntCoercion.optional(),
+  couponDiscountKrw: BigIntCoercion.optional(),
+  shippingFeeKrw: BigIntCoercion.optional(),
   shippingAddress: z.any().optional(),
 })
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>
@@ -31,7 +38,14 @@ export class OrderController {
 
   @Post()
   create(@Req() req: any, @Body(new ZodValidationPipe(CreateOrderSchema)) body: CreateOrderDto) {
-    return this.svc.create({ ...body, userId: req.user.userId })
+    return this.svc.create({
+      userId: req.user.userId,
+      items: body.items,
+      pointUsedKrw: body.pointUsedKrw as bigint | undefined,
+      couponDiscountKrw: body.couponDiscountKrw as bigint | undefined,
+      shippingFeeKrw: body.shippingFeeKrw as bigint | undefined,
+      shippingAddress: body.shippingAddress,
+    })
   }
 
   @Get()

@@ -9,6 +9,7 @@ import { OrderStatus, Prisma } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.module'
 import { ReferralEngineService } from '../referral/engine.service'
 import { PortOneClient } from './portone.client'
+import { bi } from '../../common/util/serialize.util'
 
 @Injectable()
 export class PaymentService {
@@ -23,14 +24,10 @@ export class PaymentService {
   /**
    * Confirm an order against PortOne.
    *
-   * 5-step flow:
-   *   1. Load order and assert PENDING_PAYMENT.
-   *   2. Server-side PortOne re-fetch (never trust client-sent amount/status).
-   *   3. Validate payment.status === 'PAID' AND amount === order.totalAmountKrw.
-   *   4. In a Serializable transaction:
-   *        a. Order.status = PAID + paymentId
-   *        b. ReferralEngine.distribute(tx, orderId)  // 3세대 원장 생성
-   *   5. Commit or rollback atomically.
+   * QA P1-02: PortOne amount.total 파싱 방어 (숫자/문자열/소수/비유효 처리)
+   * QA P0-08: Order status 스펠링 CANCELLED (double L)
+   * 응답: shared-types `PaymentConfirmResponseSchema` 와 매칭
+   *       ({ orderId, status, amountPaidKrw, message })
    */
   async confirm(userId: string, orderId: string, paymentId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } })
@@ -41,12 +38,20 @@ export class PaymentService {
 
     if (order.status === OrderStatus.PAID && order.paymentId === paymentId) {
       // Idempotent replay
-      return { ok: true, idempotent: true }
+      return this.buildConfirmResponse(order, 'idempotent replay')
     }
     if (order.status !== OrderStatus.PENDING_PAYMENT) {
       throw new ConflictException({
         code: 'ORDER_NOT_PENDING',
         message: `Order state invalid: ${order.status}`,
+      })
+    }
+
+    // P0-07: paymentId가 미리 배정돼 있으므로 일치 확인
+    if (order.paymentId && order.paymentId !== paymentId) {
+      throw new BadRequestException({
+        code: 'PAYMENT_ID_MISMATCH',
+        message: `order.paymentId=${order.paymentId}, body=${paymentId}`,
       })
     }
 
@@ -58,7 +63,9 @@ export class PaymentService {
         message: `PortOne status=${payment.status}`,
       })
     }
-    const portoneTotal = BigInt(String(payment.amount.total))
+
+    // P1-02: 안전한 amount 파싱 (숫자 OR decimal-integer string 만 허용)
+    const portoneTotal = parsePortOneTotal(payment.amount?.total)
     if (portoneTotal !== order.totalAmountKrw) {
       throw new ConflictException({
         code: 'AMOUNT_MISMATCH',
@@ -67,9 +74,9 @@ export class PaymentService {
     }
 
     // Step 4: Serializable transaction (status flip + referral.distribute)
-    return this.prisma.$transaction(
+    const updated = await this.prisma.$transaction(
       async (tx) => {
-        const updated = await tx.order.update({
+        const u = await tx.order.update({
           where: { id: orderId },
           data: {
             status: OrderStatus.PAID,
@@ -77,11 +84,29 @@ export class PaymentService {
             paymentMethod: payment.payMethod,
           },
         })
-        const dist = await this.referral.distribute(tx, updated.id)
-        return { ok: true, order: updated, referral: dist }
+        await this.referral.distribute(tx, u.id)
+        return u
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     )
+
+    return this.buildConfirmResponse(updated, 'payment confirmed')
+  }
+
+  private buildConfirmResponse(order: any, message: string) {
+    // shared-types PaymentConfirmResponseSchema 와 매칭
+    const statusMap: Record<string, 'PAID' | 'PENDING_PAYMENT' | 'CANCELLED' | 'FAILED'> = {
+      PAID: 'PAID',
+      PENDING_PAYMENT: 'PENDING_PAYMENT',
+      CANCELLED: 'CANCELLED',
+    }
+    const status = statusMap[order.status] ?? 'FAILED'
+    return {
+      orderId: order.id,
+      status,
+      amountPaidKrw: bi(order.totalAmountKrw),
+      message,
+    }
   }
 
   /**
@@ -181,4 +206,37 @@ export class PaymentService {
     const payment = await this.portone.getPayment(paymentId)
     return payment
   }
+}
+
+/**
+ * QA P1-02: PortOne `amount.total` 은 `number | string` 두 가지 형태로 들어올 수
+ * 있다. 다음 규칙으로 안전하게 bigint 로 변환:
+ *
+ *  - number: Number.isFinite(x) && Number.isInteger(x) 여야 함 (소수·NaN 거부)
+ *  - string: /^-?\d+$/ 매칭 (decimal integer 만)
+ *  - 그 외: BadRequestException
+ */
+export function parsePortOneTotal(v: unknown): bigint {
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v) || !Number.isInteger(v)) {
+      throw new BadRequestException({
+        code: 'AMOUNT_INVALID',
+        message: `PortOne amount.total is not a finite integer: ${v}`,
+      })
+    }
+    return BigInt(v)
+  }
+  if (typeof v === 'string') {
+    if (!/^-?\d+$/.test(v)) {
+      throw new BadRequestException({
+        code: 'AMOUNT_INVALID',
+        message: `PortOne amount.total string must be a decimal integer: ${v}`,
+      })
+    }
+    return BigInt(v)
+  }
+  throw new BadRequestException({
+    code: 'AMOUNT_INVALID',
+    message: `PortOne amount.total has unexpected type: ${typeof v}`,
+  })
 }

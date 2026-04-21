@@ -39,3 +39,15 @@ export const makePaginatedSchema = <T extends z.ZodTypeAny>(item: T) =>
     page: z.number().int().min(1),
     pageSize: z.number().int().min(1),
   });
+
+/**
+ * IdSchema — 백엔드 Prisma `@default(cuid())` 와 호환되는 리소스 식별자 스키마.
+ * - cuid: 소문자 'c' 로 시작, 뒤에 24자 이상의 영숫자.
+ * - 기존 `z.string().uuid()` 는 UUID v4 형식만 허용하여 cuid 값을 전부 거절했기에,
+ *   서버/클라이언트 계약 전반에서 `IdSchema` 로 통일한다.
+ * - 내부 상태용 랜덤 키(예: React list key)는 별도 UUID 로 써도 무방.
+ */
+export const IdSchema = z.string().regex(/^c[a-z0-9]{24,}$/, {
+  message: 'Invalid cuid format',
+});
+export type Id = z.infer<typeof IdSchema>;

@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { BigIntStringSchema } from './common';
+import { BigIntStringSchema, IdSchema } from './common';
 
 /**
  * 포트원 V2 결제 완료 후 프론트가 백엔드에 전달하는 confirm 요청.
  * - 프론트는 paymentId/orderId만 전달. 금액 재검증은 백엔드가 포트원 API로 단건 조회 후 수행.
  */
 export const PaymentConfirmRequestSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: IdSchema,
   paymentId: z.string().min(1),
   /** 포트론 txId (선택) */
   txId: z.string().optional(),
@@ -14,7 +14,7 @@ export const PaymentConfirmRequestSchema = z.object({
 export type PaymentConfirmRequest = z.infer<typeof PaymentConfirmRequestSchema>;
 
 export const PaymentConfirmResponseSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: IdSchema,
   status: z.enum(['PAID', 'PENDING_PAYMENT', 'CANCELLED', 'FAILED']),
   amountPaidKrw: BigIntStringSchema,
   message: z.string().optional(),

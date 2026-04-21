@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BigIntStringSchema, IsoDateTimeSchema } from './common';
+import { BigIntStringSchema, IdSchema, IsoDateTimeSchema } from './common';
 
 export const ProductStatusSchema = z.enum([
   'DRAFT',
@@ -19,11 +19,11 @@ export const ProductImageSchema = z.object({
 export type ProductImage = z.infer<typeof ProductImageSchema>;
 
 export const ProductSchema = z.object({
-  id: z.string().uuid(),
+  id: IdSchema,
   slug: z.string().min(1),
   name: z.string().min(1),
   brandName: z.string().nullable(),
-  categoryId: z.string().uuid().nullable(),
+  categoryId: IdSchema.nullable(),
   status: ProductStatusSchema,
   /** 정가 (KRW, BigIntString) */
   listPriceKrw: BigIntStringSchema,
@@ -35,8 +35,8 @@ export const ProductSchema = z.object({
   stock: z.number().int().min(0).nullable(),
   images: z.array(ProductImageSchema).min(1),
   description: z.string().default(''),
-  /** 레퍼럴 적립률 프리뷰용 (bps. 300 = 3%) */
-  referralPreviewBps: z.number().int().min(0).max(10000).default(300),
+  /** 레퍼럴 적립률 프리뷰용 (bps. 2500 = 25% 합계, 1대 3% + 2대 5% + 3대 17%) */
+  referralPreviewBps: z.number().int().min(0).max(10000).default(2500),
   avgRating: z.number().min(0).max(5).default(0),
   reviewCount: z.number().int().min(0).default(0),
   createdAt: IsoDateTimeSchema,
@@ -47,7 +47,7 @@ export type Product = z.infer<typeof ProductSchema>;
 export const ProductListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  categoryId: z.string().uuid().optional(),
+  categoryId: IdSchema.optional(),
   keyword: z.string().optional(),
   sort: z.enum(['popular', 'newest', 'priceAsc', 'priceDesc']).default('popular'),
 });

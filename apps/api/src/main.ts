@@ -10,7 +10,30 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor'
   return this.toString()
 }
 
+/**
+ * QA P1-06: 필수 env 부재 시 부트스트랩 즉시 실패.
+ * fallback(`'dev-secret'` 등) 은 전면 금지. dev 환경이라도 `.env` 로드 필요.
+ */
+function assertRequiredEnv(): void {
+  const required = ['JWT_SECRET', 'DATABASE_URL', 'PORTONE_API_SECRET']
+  const missing = required.filter((k) => !process.env[k] || process.env[k]!.length === 0)
+  if (missing.length) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[nuxia/api] missing required env: ${missing.join(', ')}. Set them in .env or the runtime environment.`,
+    )
+    process.exit(1)
+  }
+  if ((process.env.JWT_SECRET ?? '').length < 32) {
+    // eslint-disable-next-line no-console
+    console.error('[nuxia/api] JWT_SECRET must be at least 32 characters.')
+    process.exit(1)
+  }
+}
+
 async function bootstrap() {
+  assertRequiredEnv()
+
   const app = await NestFactory.create(AppModule, {
     bodyParser: true,
   })

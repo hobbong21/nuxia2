@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BigIntStringSchema, IsoDateTimeSchema } from './common';
+import { BigIntStringSchema, IdSchema, IsoDateTimeSchema } from './common';
 
 /** 세대별 지급률 (bps): 1대 300 / 2대 500 / 3대 1700 */
 export const GenerationSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
@@ -18,9 +18,9 @@ export const LedgerStatusSchema = z.enum([
 export type LedgerStatus = z.infer<typeof LedgerStatusSchema>;
 
 export const ReferralLedgerSchema = z.object({
-  id: z.string().uuid(),
-  orderId: z.string().uuid(),
-  beneficiaryUserId: z.string().uuid(),
+  id: IdSchema,
+  orderId: IdSchema,
+  beneficiaryUserId: IdSchema,
   generation: GenerationSchema,
   rateBps: z.union([z.literal(300), z.literal(500), z.literal(1700)]),
   /** EARN은 양수, REVERT는 음수 */
@@ -35,7 +35,7 @@ export type ReferralLedger = z.infer<typeof ReferralLedgerSchema>;
 /** 트리 노드 (재귀. 최대 3 depth) */
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
-    userId: z.string().uuid(),
+    userId: IdSchema,
     nickname: z.string(),
     referralCode: z.string(),
     generation: z.union([
@@ -114,8 +114,8 @@ export const PayoutStatusSchema = z.enum([
 export type PayoutStatus = z.infer<typeof PayoutStatusSchema>;
 
 export const PayoutSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: IdSchema,
+  userId: IdSchema,
   periodStart: IsoDateTimeSchema,
   periodEnd: IsoDateTimeSchema,
   amountGrossKrw: BigIntStringSchema,

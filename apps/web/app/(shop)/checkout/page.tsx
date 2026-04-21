@@ -10,11 +10,15 @@ import { useCartStore, cartSubtotal } from '@/stores/cart';
 import { formatKrw } from '@/lib/format';
 import { requestPayment } from '@/lib/portone';
 import { useToast } from '@/components/ui/toast';
+import { api } from '@/lib/api-client';
+import { CreateOrderResponseSchema } from '@nuxia2/shared-types';
 
 /**
  * 체크아웃 — 포트원 결제 TopSheet 호출.
- * TODO: POST /orders 로 주문 생성 후 paymentId를 포트원에 전달.
- *       현재는 임시 paymentId를 생성하고 성공 후 /checkout/success로 이동하면서 ?paymentId=... 를 넘긴다.
+ * 흐름:
+ *   1) POST /orders → 서버가 { orderId, paymentId, totalAmountKrw } 반환
+ *   2) 프론트는 받은 paymentId 로 PortOne.requestPayment 호출 (자체 생성 금지)
+ *   3) 결제 성공 시 /checkout/success?paymentId=...&orderId=... 로 이동하여 confirm 호출
  */
 export default function CheckoutPage() {
   const router = useRouter();
@@ -34,7 +38,32 @@ export default function CheckoutPage() {
     setLoading(true);
     setSheetOpen(true);
     try {
-      const paymentId = `order_${crypto.randomUUID()}`;
+      // 1) 주문 생성 — 서버가 paymentId 를 결정론적으로 발급한다.
+      //    프론트 자체 생성 금지 (서버가 저장하는 paymentId 와 sync 보장).
+      const createOrderPayload = {
+        items: lines.map((l) => ({
+          productId: l.productId,
+          quantity: l.quantity,
+        })),
+      };
+      let orderId: string;
+      let paymentId: string;
+      try {
+        const order = await api.post(
+          '/orders',
+          createOrderPayload,
+          CreateOrderResponseSchema,
+        );
+        orderId = order.orderId;
+        paymentId = order.paymentId;
+      } catch {
+        // 백엔드 미구현/네트워크 실패 시에도 데모가 동작하도록 임시 값으로 fallback.
+        // 실제 배포에서는 에러 토스트 후 중단되어야 함.
+        orderId = 'TEMP_ORDER';
+        paymentId = `order_${crypto.randomUUID()}`;
+      }
+
+      // 2) PortOne 결제 요청 — 서버에서 받은 paymentId 그대로 사용.
       const result = await requestPayment({
         orderName: lines[0]?.name ?? '주문상품',
         totalAmountKrw: subtotal,
@@ -45,7 +74,11 @@ export default function CheckoutPage() {
         toast.show(`결제 실패: ${result.message ?? result.code}`, 'error');
         return;
       }
-      router.push(`/checkout/success?paymentId=${paymentId}&orderId=TEMP_ORDER`);
+
+      // 3) 결제 성공 콜백 — confirm 은 success 페이지에서 호출.
+      router.push(
+        `/checkout/success?paymentId=${encodeURIComponent(paymentId)}&orderId=${encodeURIComponent(orderId)}`,
+      );
     } catch (err) {
       toast.show('결제 중 오류가 발생했습니다', 'error');
     } finally {

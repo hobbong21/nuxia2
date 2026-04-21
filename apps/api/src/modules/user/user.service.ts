@@ -178,8 +178,9 @@ export class UserService {
   async getMe(userId: string) {
     const u = await this.prisma.user.findUnique({ where: { id: userId } })
     if (!u) throw new NotFoundException({ code: 'USER_NOT_FOUND', message: 'User not found' })
-    const { passwordHash, ci, ciHash, phoneNumber, ...safe } = u
-    return safe
+    // QA P0-02: shared-types User 와 1:1 매칭 (identityVerified, age 포함)
+    const { serializeUser } = await import('../../common/util/serialize.util')
+    return serializeUser(u)
   }
 
   async withdraw(userId: string) {

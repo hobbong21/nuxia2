@@ -39,9 +39,19 @@ export class PortoneWebhookController {
     const secret = process.env.PORTONE_WEBHOOK_SECRET ?? ''
     const signature = sig ?? altSig ?? ''
     const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
+
+    // QA P1-03:
+    //  - 운영에서는 secret 이 반드시 있어야 하며 서명 검증 스킵 불가
+    //  - 개발/스테이징 환경에서만 `ALLOW_UNSIGNED_WEBHOOK=1` 토글로 bypass 허용
+    const allowUnsigned =
+      process.env.ALLOW_UNSIGNED_WEBHOOK === '1' && process.env.NODE_ENV !== 'production'
     if (!verifyHmac(rawBody, signature, secret)) {
-      this.logger.warn('Invalid webhook signature')
-      throw new BadRequestException({ code: 'WEBHOOK_BAD_SIGNATURE', message: 'bad sig' })
+      if (allowUnsigned) {
+        this.logger.warn('Webhook signature skipped (ALLOW_UNSIGNED_WEBHOOK=1, non-prod)')
+      } else {
+        this.logger.warn('Invalid webhook signature')
+        throw new BadRequestException({ code: 'WEBHOOK_BAD_SIGNATURE', message: 'bad sig' })
+      }
     }
 
     const paymentId = body?.data?.paymentId ?? body?.paymentId

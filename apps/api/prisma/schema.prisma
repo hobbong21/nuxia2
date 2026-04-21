@@ -33,9 +33,12 @@ enum UserStatus {
 }
 
 enum ProductStatus {
-  ON_SALE
+  // QA P1-05: shared-types ProductStatusSchema와 통일 (DRAFT/ACTIVE/SOLD_OUT/HIDDEN/ARCHIVED)
+  DRAFT
+  ACTIVE
   SOLD_OUT
   HIDDEN
+  ARCHIVED
 }
 
 enum OrderStatus {
@@ -45,7 +48,8 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CONFIRMED
-  CANCELED
+  // QA P0-08: shared-types와 스펠링 통일 (double L)
+  CANCELLED
   REFUNDED
   PARTIAL_REFUNDED
   HOLD
@@ -167,18 +171,35 @@ model BankAccount {
 // Products
 // ============================================================================
 
+// QA P1-05: shared-types ProductSchema와 1:1 정렬
+// 마이그레이션 노트 (배포 시 `prisma migrate dev`):
+//   - sku → slug 로 리네임 (unique 유지)
+//   - priceKrw → salePriceKrw 로 리네임 (기존 값 복사)
+//   - listPriceKrw 신규 (default = salePriceKrw), discountPct 신규 (default 0)
+//   - brandName, avgRating, reviewCount, referralPreviewBps 신규
+//   - ON_SALE → ACTIVE 로 데이터 이행 (enum 변경과 함께)
 model Product {
-  id          String         @id @default(cuid())
-  sku         String         @unique
-  name        String
-  description String?
-  priceKrw    BigInt
-  stock       Int            @default(0)
-  category    String?
-  images      String[]
-  status      ProductStatus  @default(ON_SALE)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id                 String         @id @default(cuid())
+  slug               String         @unique
+  name               String
+  description        String         @default("")
+  /** 정가 (KRW) */
+  listPriceKrw       BigInt
+  /** 할인 후 판매가 (KRW) */
+  salePriceKrw       BigInt
+  /** 0~100 정수 할인율. listPrice / salePrice 로 계산 가능하나 캐시 컬럼 */
+  discountPct        Int            @default(0)
+  brandName          String?
+  stock              Int            @default(0)
+  category           String?
+  images             String[]
+  /** 레퍼럴 적립률 프리뷰용 (bps. 2500 = 25% 합계 표시 등) */
+  referralPreviewBps Int?           @default(2500)
+  avgRating          Float          @default(0)
+  reviewCount        Int            @default(0)
+  status             ProductStatus  @default(ACTIVE)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   orderItems  OrderItem[]
   cartItems   CartItem[]
@@ -221,9 +242,12 @@ model Order {
 
   // 금액 (원 단위 BigInt) - T3: 쿠폰 차감 후 실결제 금액 기준
   totalAmountKrw    BigInt        // 레퍼럴 기준 금액 (T4: 포인트 포함=현금성)
+  // QA P0-03 후속: shared-types OrderSchema 와 매칭
+  subtotalAmountKrw   BigInt      @default(0)  // 상품 합계 (쿠폰·포인트 적용 전)
+  couponDiscountKrw   BigInt      @default(0)  // 쿠폰 할인액
   pointUsedKrw      BigInt        @default(0)
-  discountKrw       BigInt        @default(0)
-  shippingKrw       BigInt        @default(0)
+  discountKrw       BigInt        @default(0)  // legacy; 호환용
+  shippingFeeKrw    BigInt        @default(0)  // (구 shippingKrw)
 
   status            OrderStatus   @default(PENDING_PAYMENT)
   paymentId         String?       @unique
@@ -254,8 +278,13 @@ model OrderItem {
   productId           String
   product             Product  @relation(fields: [productId], references: [id])
   productNameSnapshot String
+  // QA P0-03/P1-05 후속: shared-types OrderItemSchema 와 shape 일치
+  imageUrlSnapshot    String?
+  optionSummary       String?
   unitPriceKrw        BigInt
   quantity            Int
+  // 라인 소계 캐시 (= unitPriceKrw × quantity). 저장 시 계산
+  lineAmountKrw       BigInt   @default(0)
   refundedQuantity    Int      @default(0)
 
   @@index([orderId])

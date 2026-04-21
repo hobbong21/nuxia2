@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 
 /**
  * Thin wrapper around PortOne V2 server SDK.
@@ -26,9 +26,6 @@ export class PortOneClient {
   private readonly apiSecret = process.env.PORTONE_API_SECRET ?? ''
 
   async getPayment(paymentId: string): Promise<PortOnePayment> {
-    // Real impl (pseudo-code):
-    //   const sdk = PortOneClient({ secret: this.apiSecret })
-    //   return sdk.payment.getPayment({ paymentId })
     const res = await fetch(`https://api.portone.io/payments/${encodeURIComponent(paymentId)}`, {
       headers: { Authorization: `PortOne ${this.apiSecret}` },
     })
@@ -38,12 +35,20 @@ export class PortOneClient {
     return (await res.json()) as PortOnePayment
   }
 
+  /**
+   * QA P1-04: `opts.amount` 가 `bigint` 인 경우 `Number` 변환 시 안전성 검증.
+   *  - Number.isFinite / Number.isInteger 통과
+   *  - 양수 (0 이하 거절)
+   *  - Number.MAX_SAFE_INTEGER 이하 (2^53-1 ≈ 9e15). 원화 단위로는 여유.
+   */
   async cancelPayment(
     paymentId: string,
     opts: { reason: string; amount?: bigint },
   ): Promise<{ status: string }> {
     const body: Record<string, unknown> = { reason: opts.reason }
-    if (opts.amount != null) body.amount = Number(opts.amount)
+    if (opts.amount != null) {
+      body.amount = coerceAmountToNumber(opts.amount)
+    }
     const res = await fetch(
       `https://api.portone.io/payments/${encodeURIComponent(paymentId)}/cancel`,
       {
@@ -58,4 +63,34 @@ export class PortOneClient {
     if (!res.ok) throw new Error(`PortOne cancelPayment failed: ${res.status}`)
     return (await res.json()) as { status: string }
   }
+}
+
+export function coerceAmountToNumber(amount: bigint): number {
+  if (typeof amount !== 'bigint') {
+    throw new BadRequestException({
+      code: 'CANCEL_AMOUNT_INVALID',
+      message: `amount must be bigint, got ${typeof amount}`,
+    })
+  }
+  if (amount <= 0n) {
+    throw new BadRequestException({
+      code: 'CANCEL_AMOUNT_INVALID',
+      message: `cancel amount must be positive: ${amount}`,
+    })
+  }
+  const max = BigInt(Number.MAX_SAFE_INTEGER)
+  if (amount > max) {
+    throw new BadRequestException({
+      code: 'CANCEL_AMOUNT_INVALID',
+      message: `cancel amount exceeds MAX_SAFE_INTEGER: ${amount}`,
+    })
+  }
+  const n = Number(amount)
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    throw new BadRequestException({
+      code: 'CANCEL_AMOUNT_INVALID',
+      message: `cancel amount failed Number conversion: ${amount}`,
+    })
+  }
+  return n
 }

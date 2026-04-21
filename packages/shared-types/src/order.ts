@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BigIntStringSchema, IsoDateTimeSchema } from './common';
+import { BigIntStringSchema, IdSchema, IsoDateTimeSchema } from './common';
 
 export const OrderStatusSchema = z.enum([
   'PENDING_PAYMENT',
@@ -16,9 +16,9 @@ export const OrderStatusSchema = z.enum([
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 export const OrderItemSchema = z.object({
-  id: z.string().uuid(),
-  orderId: z.string().uuid(),
-  productId: z.string().uuid(),
+  id: IdSchema,
+  orderId: IdSchema,
+  productId: IdSchema,
   productNameSnapshot: z.string(),
   imageUrlSnapshot: z.string().url().nullable(),
   unitPriceKrw: BigIntStringSchema,
@@ -40,8 +40,8 @@ export const ShippingAddressSchema = z.object({
 export type ShippingAddress = z.infer<typeof ShippingAddressSchema>;
 
 export const OrderSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: IdSchema,
+  userId: IdSchema,
   /** 정책 01a T3 — 쿠폰·포인트 차감 후 "레퍼럴 기준 금액" */
   totalAmountKrw: BigIntStringSchema,
   /** 상품 합계 (할인·쿠폰·포인트 전) */
@@ -66,7 +66,7 @@ export const CreateOrderRequestSchema = z.object({
   items: z
     .array(
       z.object({
-        productId: z.string().uuid(),
+        productId: IdSchema,
         quantity: z.number().int().positive(),
         optionSummary: z.string().optional(),
       }),
@@ -79,7 +79,7 @@ export const CreateOrderRequestSchema = z.object({
 export type CreateOrderRequest = z.infer<typeof CreateOrderRequestSchema>;
 
 export const CreateOrderResponseSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: IdSchema,
   totalAmountKrw: BigIntStringSchema,
   paymentId: z.string(),
 });

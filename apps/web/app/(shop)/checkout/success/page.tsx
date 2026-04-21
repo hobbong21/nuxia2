@@ -6,15 +6,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
-import {
-  PaymentConfirmResponseSchema,
-  type PaymentConfirmRequest,
-} from '@nuxia2/shared-types';
+import { PaymentConfirmResponseSchema } from '@nuxia2/shared-types';
 import { useCartStore } from '@/stores/cart';
 
 /**
  * 결제 완료 콜백 — 백엔드 confirm.
- * 프론트는 paymentId/orderId만 전달. 금액 검증/승인은 백엔드가 포트원 API로 재조회.
+ * 프론트는 paymentId 만 body 로 전달 (orderId 는 URL path 에 포함).
+ * 금액 검증/승인은 백엔드가 포트원 API 로 재조회하여 수행.
+ * 엔드포인트: POST /payments/orders/:orderId/confirm  body={ paymentId }
  */
 export default function CheckoutSuccessPage() {
   const params = useSearchParams();
@@ -32,9 +31,14 @@ export default function CheckoutSuccessPage() {
       setStatus('fail');
       return;
     }
-    const payload: PaymentConfirmRequest = { paymentId, orderId };
+    // 경로는 REST 규약: /payments/orders/:orderId/confirm
+    // body 는 paymentId 만 포함 (orderId 는 path에 이미 존재)
     api
-      .post('/payments/confirm', payload, PaymentConfirmResponseSchema)
+      .post(
+        `/payments/orders/${encodeURIComponent(orderId)}/confirm`,
+        { paymentId },
+        PaymentConfirmResponseSchema,
+      )
       .then((res) => {
         if (res.status === 'PAID') {
           setStatus('success');

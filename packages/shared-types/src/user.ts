@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IsoDateTimeSchema } from './common';
+import { IdSchema, IsoDateTimeSchema } from './common';
 
 /** 정책 01a T6 — 역할 enum (STAFF/STAFF_FAMILY는 레퍼럴 참여 불가) */
 export const UserRoleSchema = z.enum([
@@ -22,12 +22,12 @@ export const UserStatusSchema = z.enum([
 export type UserStatus = z.infer<typeof UserStatusSchema>;
 
 export const UserSchema = z.object({
-  id: z.string().uuid(),
+  id: IdSchema,
   email: z.string().email(),
   nickname: z.string().min(1).max(40),
   referralCode: z.string().min(4).max(16),
-  referrerId: z.string().uuid().nullable(),
-  ancestorPath: z.array(z.string().uuid()).max(3),
+  referrerId: IdSchema.nullable(),
+  ancestorPath: z.array(IdSchema).max(3),
   role: UserRoleSchema,
   status: UserStatusSchema,
   /** 본인인증 완료 여부 (ci 존재) */
