@@ -1,9 +1,11 @@
 import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
 import { GlobalExceptionFilter } from './common/filters/exception.filter'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor'
+import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor'
 
 // BigInt → JSON serialization
 ;(BigInt.prototype as any).toJSON = function () {
@@ -36,7 +38,11 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, {
     bodyParser: true,
+    bufferLogs: true,
   })
+
+  // v0.3 S1: pino 로거 주입 — 부팅 로그까지 구조화.
+  app.useLogger(app.get(Logger))
 
   app.setGlobalPrefix('api')
 
@@ -49,7 +55,9 @@ async function bootstrap() {
   )
 
   app.useGlobalFilters(new GlobalExceptionFilter())
-  app.useGlobalInterceptors(new LoggingInterceptor())
+  // CorrelationIdInterceptor 는 LoggingInterceptor 이전에 실행되어
+  // 로그 라인까지 correlation-id 가 전파되어야 한다.
+  app.useGlobalInterceptors(new CorrelationIdInterceptor(), new LoggingInterceptor())
 
   // Swagger / OpenAPI
   const config = new DocumentBuilder()

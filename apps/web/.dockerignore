@@ -1,0 +1,8 @@
+# Web app - docker build context trim
+node_modules
+.next
+out
+.env
+.env.*
+*.log
+coverage

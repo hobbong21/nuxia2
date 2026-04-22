@@ -40,7 +40,15 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: nuxia2-api
-    env_file: [./apps/api/.env.local]
+    # env_file is optional (local overrides); explicit env below is authoritative for compose networking.
+    env_file:
+      - path: ./apps/api/.env.local
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nuxia2}:${POSTGRES_PASSWORD:-nuxia2_dev}@postgres:5432/${POSTGRES_DB:-nuxia2}?schema=public
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -53,7 +61,15 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: nuxia2-web
-    env_file: [./apps/web/.env.local]
+    env_file:
+      - path: ./apps/web/.env.local
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Note: NEXT_PUBLIC_* must be available at build time for baked-in values.
+      # This var supports server-side fetches at runtime within the compose network.
+      NEXT_PUBLIC_API_BASE_URL: http://api:4000
     depends_on:
       api: { condition: service_started }
     ports:

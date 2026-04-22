@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --if-present run typecheck
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --if-present run lint
+
+  e2e:
+    name: E2E (api)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nuxia2_test
+          POSTGRES_USER: nuxia2
+          POSTGRES_PASSWORD: nuxia2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nuxia2 -d nuxia2_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://nuxia2:nuxia2_test@localhost:5432/nuxia2_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test_jwt_secret_at_least_32_chars_long_xxx
+      PORTONE_API_SECRET: test_portone_api_secret
+      PORTONE_WEBHOOK_SECRET: test_portone_webhook_secret
+      APP_ENCRYPTION_KEY: test_enc_key_32bytes_minimum_xxxxxxxxxx
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma migrate deploy
+        run: pnpm --filter @nuxia2/api exec prisma migrate deploy
+      - name: Run E2E
+        run: pnpm --filter @nuxia2/api run test:e2e

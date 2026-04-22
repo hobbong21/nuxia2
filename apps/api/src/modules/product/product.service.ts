@@ -55,8 +55,9 @@ export function serializeProduct(p: any) {
     slug: p.slug,
     name: p.name,
     brandName: p.brandName ?? null,
-    // v2-P2-NEW-03: Prisma `Product.category` 는 자유 문자열(카테고리 이름).
-    // shared-types 는 `categoryName` 으로 의미 일치 (categoryId 는 향후 Category 모델 도입 시 재도입).
+    // v0.3-M4: Prisma `Product.category` 는 자유 문자열(카테고리 이름).
+    // shared-types 는 `categoryName` 으로 의미 일치. 향후 Category 모델 도입 시
+    // 별도 `categoryId` 필드가 추가될 예정이나, v0.3 현재는 category 이름만 노출.
     categoryName: (p.category ?? null) as string | null,
     status: p.status,
     listPriceKrw: bi(p.listPriceKrw ?? p.salePriceKrw ?? 0n),
