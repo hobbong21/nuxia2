@@ -7,18 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned (v0.4)
-- 실제 JWT 세션 → 관리자 쿠키 role 가드 통합
-- 관리자 2FA (TOTP) UI (스키마만 v0.3에서 준비)
-- Capacitor Android 빌드 자동화 워크플로
-- `/metrics` 엔드포인트 (prom-client) + counters
-- Audit log 래퍼 서비스로 관리자 API 호출 일관화
-- Correlation-id를 PortOne outbound 요청 헤더에도 forward
+### Planned (v0.5)
+- 실제 BE 서비스 호출 경로에 `metrics.inc*()` 연결 (referral engine, payment, webhook)
+- Admin 감사 인터페이스 (AuditLog 조회 UI)
+- SMS/이메일 OTP 옵션 (TOTP 외 백업 방식)
+- i18n (한국어 외 영어/일어)
+- 관리자 2FA 활성 강제 정책 토글
 
-### Planned feature polish (v0.3.x 후속)
-- Cart/checkout 배송지 입력 플로우 UI
-- 상품 필터/검색 (categoryName 기반)
-- 결제 수단 선택 UI (카드/계좌이체/간편결제)
+---
+
+## [0.4.0] - 2026-04-21
+
+관리자 BE API 완성 + JWT 세션 + 2FA + Prometheus metrics + Audit log. v0.3의 관리자 UI가 실 데이터와 연동되고, 프로덕션 보안/관측 기반이 확보된 상태.
+
+### Added
+
+- **Admin BE API 4 신규 엔드포인트** (M1):
+  - `GET /admin/kpi` — 이번 달 어뷰징 차단 / 미지급 정산 NET / 미성년 유보 / 활성 사용자 수 (KST 월 경계)
+  - `GET /admin/users?query=&cursor=&limit=` — 이메일/닉네임 iLike 검색 + 커서 페이지네이션
+  - `GET /admin/users/:id` — `ciMasked` 마스킹 + `flaggedCount` 집계
+  - `GET /admin/payouts?cursor=&limit=`
+- **shared-types 신규 8 스키마** (`admin.ts`): AdminKpi, AdminUser, PaginatedAdminUsers, PaginatedPayouts, TotpSetupResponse, TotpVerifyRequest, LoginStepOneResponse, TotpLoginRequest
+- **JWT 세션 ↔ 관리자 쿠키 통합** (M2): 로그인 시 `role=ADMIN`이면 `Set-Cookie: nx_role=ADMIN; HttpOnly; SameSite=Lax; Secure` 발행. FE `admin-client.ts` fetch에 `credentials: 'include'`
+- **Prometheus /metrics + prom-client 5 커스텀 메트릭** (M3):
+  - Counter: `nuxia2_referral_distribute_total{result}`, `nuxia2_payment_confirm_total{result}`, `nuxia2_abuse_blocked_total{kind}`, `nuxia2_webhook_received_total{source,status}`
+  - Gauge: `nuxia2_minor_hold_total`
+  - 프로덕션은 `X-Internal-Secret` 헤더 (env `METRICS_INTERNAL_SECRET`)
+- **Audit Log 인프라** (M4):
+  - `@Audit('KIND')` 데코레이터 + `AuditLogInterceptor` (응답 성공 시 자동 기록)
+  - 6 관리자 mutating 엔드포인트에 적용: USER_FLAG, USER_MARK_STAFF, USER_SUSPEND, USER_RELEASE_MINOR, PAYOUT_RUN, PAYOUT_RELEASE
+- **2FA (TOTP) 전체 흐름** (M5):
+  - Backend: `otplib` + `qrcode`, `totp.service` (generate/verify/disable), `/auth/2fa/{setup,verify,disable,login}` 4 엔드포인트
+  - Prisma 스키마: `User.totpSecret`(암호화) / `totpEnabled` / `totpEnabledAt` / `lastLoginAt`
+  - 마이그레이션: `20260421000001_add_totp/migration.sql`
+  - Frontend: `TotpField` (6자리 auto-submit + paste), `TotpSetupModal` (QR → verify), `TotpDisableModal`, `/mypage/security` 페이지
+  - 로그인 1단계(email/pw) → 2단계(TOTP) 자동 전환 (`LoginStep1Response` union)
+- **FE admin mock → real API 전환** (M6): `NEXT_PUBLIC_USE_MOCK` 환경변수 게이트 + 5 메서드 zod `safeParse`
+- **Correlation-id outbound forward** (S1): `portone.client` 모든 HTTP 호출에 `X-Request-Id` 헤더 자동 주입 (AsyncLocalStorage 재사용)
+- **X-Admin-Api-Key 가드** (S3, optional): `ADMIN_API_KEY` 환경변수 설정 시 `/admin/*` 2단 가드
+- **TOTP / Admin 테스트 +11 it** (34→40→**51 it**):
+  - `admin-api.test.ts` 4 it (KPI/users list/user detail/payouts)
+  - `totp.test.ts` 3 it (setup → verify → disable)
+  - `metrics.test.ts` 2 it (counter 증가)
+  - `audit-log.test.ts` 2 it (flag 호출 후 AuditLog 생성)
+- **Health 엔드포인트** (Dockerfile HEALTHCHECK 정합): `GET /health` + `GET /health/ready`
+
+### Changed
+
+- **BREAKING (API)**: 로그인 응답이 `AuthResponse` 또는 `{ needsTotp: true, userId }` 유니언. FE는 `LoginStep1ResponseSchema`로 분기 필요 (v0.4 FE 구현 완료).
+- `apps/api/src/app.module.ts`: `AuditModule` + `MetricsModule` 전역 등록
+- `apps/web/lib/admin-client.ts`: v0.3의 하드코드 `USE_MOCK=true`를 환경변수 게이트로 교체
+- `packages/shared-types/src/index.ts`: `admin.ts` re-export
+
+### Infrastructure
+
+- `.env.example`에 3 신규 env (`ADMIN_API_KEY`, `METRICS_INTERNAL_SECRET`, `TOTP_ISSUER`)
+- `.env.docker.example` + `docker-compose.yml` full profile env 확장 (api 3 + web 1)
+- CI `ci.yml` e2e job env 3개 추가
+- `README.md`: "핵심 기능"에 2FA · /metrics · Audit log 3 불릿 추가
+- `docs/QUICKSTART.md`: v0.4 대섹션 (env 설명 + 2FA 활성화 가이드 + /metrics 접근법)
+- `prom-client`, `otplib`, `qrcode` (+ @types/qrcode) deps 추가
+
+### Non-goals (deferred to v0.5)
+
+- 실제 도메인 서비스 경로에서 `metrics.inc*()` 호출 연결 (counter 정의만 완료)
+- Admin UI에 AuditLog 조회 화면
+- 백업용 SMS/이메일 OTP
+- i18n
+
+### Non-blocker residuals
+
+- `apps/web/tsconfig.tsbuildinfo` 실수 커밋 — 다음 커밋에 `.gitignore` 추가
+- FE 타입체크 일부 strict 경계(zod `.optional()` ↔ plain `Cursor<T>` interface)에서 경고 — 런타임 영향 없음, v0.5에 정리
+- `apps/web/.env.example` 부재 — FE 개발자 생성 필요
+- Docker 실제 `docker build` 스모크 미수행 (Docker 미설치 환경)
 
 ---
 

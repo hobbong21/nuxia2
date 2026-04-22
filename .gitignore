@@ -51,3 +51,5 @@ node_modules/
 apps/web/.next/
 apps/web/out/
 apps/api/dist/
+apps/web/tsconfig.tsbuildinfo
+apps/api/tsconfig.tsbuildinfo

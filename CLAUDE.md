@@ -27,3 +27,5 @@
 | 2026-04-21 | v0.2.0 스프린트 — 실 Prisma 마이그레이션(360줄) + seed.ts(23 레코드) + docker-compose + Makefile + vitest E2E(34 it) + JWT refresh + Admin API 확장 + N1/N2/N3 non-blocker 해소 | backend/infra(general-purpose)/qa 병렬 + route 수정 | 로컬 실행 가능 + 자동화 검증 |
 | 2026-04-21 | Frontend dev server 부팅 검증 — `(mypage)` 라우트 그룹이 `(shop)` 루트와 충돌 → `mypage/` 세그먼트로 변경. pnpm install 823 packages. 홈/대시보드/트리/가입/초대 렌더링 스크린샷 확인 | apps/web/app/mypage/ | 라우팅 충돌 수정 + v0.2 UI 렌더링 검증 |
 | 2026-04-21 | v0.3.0 스프린트 — Admin UI 5 라우트+7 컴포넌트(다크, 3중 인코딩) + Dockerfile 2종 + GitHub Actions CI 2종 + Webhook E2E 6 it(총 40 it) + categoryId legacy 제거 + /health 엔드포인트 + pino 구조화 로그 + correlation-id | frontend/backend/infra 병렬 | 운영 가시성 + 컨테이너 재현 + CI 게이트 |
+| 2026-04-21 | v0.3.1 기능 보강 — 배송지 폼 + 상품 필터/검색 + 결제수단 탭 3종 (카드/계좌이체/간편결제) | frontend 단독 | 체크아웃 플로우 + 카테고리 필터 |
+| 2026-04-21 | v0.4.0 스프린트 — Admin BE 4 신규(kpi/users/users:id/payouts) + 2FA TOTP(4 엔드포인트+3 FE 컴포넌트+1 page) + Prometheus /metrics 5 custom + Audit log interceptor 6 엔드포인트 + JWT 쿠키 통합 + shared-types admin.ts 8 신규 스키마 + 테스트 40→51 | backend/frontend/infra 병렬 | 관리자 실 데이터 연동 + 보안 + 관측성 |
