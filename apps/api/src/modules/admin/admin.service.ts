@@ -289,6 +289,72 @@ export class AdminService {
     })
     return p
   }
+
+  // -------- v0.5 M2: Audit log 조회 --------
+
+  async listAuditLogs(params: {
+    kind?: string
+    actorUserId?: string
+    targetType?: string
+    targetId?: string
+    cursor?: string
+    limit?: number
+  }) {
+    const { kind, actorUserId, targetType, targetId, cursor, limit = 50 } = params
+    const where: any = {}
+    if (kind) where.kind = kind
+    if (actorUserId) where.actorUserId = actorUserId
+    if (targetType) where.targetType = targetType
+    if (targetId) where.targetId = targetId
+
+    const take = limit + 1
+    // AuditLog 스키마가 actor relation + before/after JSON을 포함하는 최신 모델을
+    // 사용한다고 가정. 기존 `action`/`target` 평면 컬럼 모델 경우
+    // 리네임/마이그레이션은 별도 작업 (이 메서드는 새 스키마 기준으로 동작).
+    const rows = await (this.prisma as any).auditLog.findMany({
+      where,
+      include: { actor: { select: { nickname: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    })
+
+    const hasMore = rows.length > limit
+    const items = hasMore ? rows.slice(0, limit) : rows
+    const nextCursor = hasMore ? items[items.length - 1].id : null
+
+    return {
+      items: items.map((r: any) => ({
+        id: r.id,
+        actorUserId: r.actorUserId ?? r.actorId ?? '',
+        actorNickname: r.actor?.nickname ?? null,
+        kind: r.kind ?? r.action ?? 'UNKNOWN',
+        targetType: r.targetType ?? (r.target ? String(r.target).split(':')[0] : 'Unknown'),
+        targetId: r.targetId ?? (r.target ? String(r.target).split(':')[1] ?? '' : ''),
+        diffSummary: computeDiffSummary(r.before, r.after),
+        createdAt:
+          r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+      })),
+      nextCursor,
+    }
+  }
+}
+
+function computeDiffSummary(
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!before && !after) return null
+  const keys = new Set<string>()
+  if (before) Object.keys(before).forEach((k) => keys.add(k))
+  if (after) Object.keys(after).forEach((k) => keys.add(k))
+  const changed: string[] = []
+  for (const k of keys) {
+    const a = before?.[k]
+    const b = after?.[k]
+    if (JSON.stringify(a) !== JSON.stringify(b)) changed.push(k)
+  }
+  return changed.length > 0 ? changed.join(',') : null
 }
 
 // ---------------------------------------------------------------------------

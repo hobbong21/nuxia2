@@ -9,9 +9,24 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
 import { TotpService } from './totp.service'
+import { OtpService } from './otp.service'
 import { JwtAuthGuard } from '../../common/guards/auth.guard'
 import { z } from 'zod'
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe'
+
+// v0.5 M3 — OTP 백업 (SMS/Email) 스키마
+export const OtpKindSchema = z.enum(['SMS', 'EMAIL'])
+export const OtpRequestSchema = z.object({
+  kind: OtpKindSchema,
+  userId: z.string().optional(),
+})
+export type OtpRequestDto = z.infer<typeof OtpRequestSchema>
+export const OtpVerifySchema2 = z.object({
+  kind: OtpKindSchema,
+  code: z.string().regex(/^\d{6}$/),
+  userId: z.string().optional(),
+})
+export type OtpVerifyDto2 = z.infer<typeof OtpVerifySchema2>
 
 // QA P0-01: 프론트는 plaintext `ci` 대신 `identityVerificationId` 를 보낸다.
 // 서버가 포트온 identity-verification API 로 재조회하여 ci/birth 를 획득.
@@ -73,7 +88,44 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly totp: TotpService,
+    private readonly otp: OtpService,
   ) {}
+
+  // --- v0.5 M3: OTP 백업 (SMS/Email) ---
+
+  /**
+   * OTP 코드 요청.
+   *  - 인증된 사용자: req.user.userId 사용
+   *  - 로그인 2단계 경로: body.userId 허용 (1단계 응답의 userId)
+   */
+  @Post('otp/request')
+  async otpRequest(
+    @Body(new ZodValidationPipe(OtpRequestSchema)) body: OtpRequestDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.userId ?? body.userId
+    if (!userId) {
+      return { statusCode: 400, code: 'USER_ID_REQUIRED', message: 'userId 필수.' }
+    }
+    return this.otp.requestOtp(userId, body.kind)
+  }
+
+  /**
+   * OTP 코드 검증. 성공 시 `{ ok: true }`.
+   * (로그인 대체 흐름의 경우, 성공 후 클라이언트는 /auth/login 재호출하거나
+   *  별도 `/auth/otp/login` 플로우로 확장 가능 — v0.5 범위는 검증만)
+   */
+  @Post('otp/verify')
+  async otpVerify(
+    @Body(new ZodValidationPipe(OtpVerifySchema2)) body: OtpVerifyDto2,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.userId ?? body.userId
+    if (!userId) {
+      return { statusCode: 400, code: 'USER_ID_REQUIRED', message: 'userId 필수.' }
+    }
+    return this.otp.verifyOtp(userId, body.kind, body.code)
+  }
 
   @Post('signup')
   async signup(@Body(new ZodValidationPipe(SignupSchema)) body: SignupDto, @Req() req: any) {

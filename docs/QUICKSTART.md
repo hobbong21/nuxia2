@@ -214,6 +214,26 @@ Redis가 실행 중이 아닙니다. `make up` 또는 수동 기동.
 
 ---
 
+## v0.5 새 환경 변수 & 관측성
+
+### Backend
+- `OTP_DRY_RUN` — 1이면 SMS/Email 실제 발송 없이 console.log만 (개발 기본)
+- `SMS_PROVIDER`, `SMS_API_KEY`, `SMS_API_SECRET`, `SMS_FROM_NUMBER` — 상용 전환 시
+- `SMTP_HOST/PORT/USER/PASS/FROM` — 이메일 OTP 공급자
+- `ADMIN_REQUIRE_2FA` — true로 설정 시 role=ADMIN 계정은 로그인 후 2FA 미설정이면 `/mypage/security`로 강제 리다이렉트
+
+### Grafana / Prometheus
+- `docs/grafana-dashboard.json` 임포트 (Grafana 10+)
+- `docs/prometheus-alerts.yml`을 Prometheus `rule_files:`에 추가
+- `/metrics` scrape 주기 15s 권장
+
+### OTP 테스트 (dry-run 모드)
+1. `POST /auth/otp/request { kind: "SMS" }` 응답 `{ ok: true }`
+2. api 컨테이너 로그에 `[OTP dry-run] SMS to user-xxx: 123456` 출력
+3. `POST /auth/otp/verify { code: "123456", kind: "SMS" }`
+
+---
+
 ## 다음 단계
 
 - 하이브리드앱 빌드: [`apps/mobile/README.md`](../apps/mobile/README.md)

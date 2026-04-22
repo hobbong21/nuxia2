@@ -1,0 +1,51 @@
+# Nuxia2 Prometheus Alertmanager 룰 (v0.5)
+# 사용법:
+#   prometheus.yml 의 rule_files: 에 아래 파일을 추가
+#     rule_files:
+#       - /etc/prometheus/nuxia2-alerts.yml
+#   Alertmanager 라우팅: team=nuxia2 라벨 기반 Slack/이메일 채널 매칭
+
+groups:
+  - name: nuxia2-alerts
+    interval: 30s
+    rules:
+      - alert: PaymentMismatchSpike
+        expr: sum(rate(nuxia2_payment_confirm_total{result="mismatch"}[5m])) > 5/300
+        for: 2m
+        labels:
+          severity: critical
+          team: nuxia2
+        annotations:
+          summary: "포트원 금액 불일치 거절이 5분 내 5건 초과"
+          description: "금액 검증 실패 급증. 포트원 API 스펙 변경 또는 FE 금액 전송 버그 의심."
+          runbook: "docs/QUICKSTART.md#v05-새-환경-변수--관측성"
+
+      - alert: WebhookRejectedSpike
+        expr: sum(rate(nuxia2_webhook_received_total{status="rejected"}[5m])) > 3/300
+        for: 2m
+        labels:
+          severity: warning
+          team: nuxia2
+        annotations:
+          summary: "포트원 Webhook 서명 거부가 5분 내 3건 초과"
+          description: "PORTONE_WEBHOOK_SECRET 불일치 또는 공격 시도 가능성. Replay/서명 재확인."
+
+      - alert: ReferralDistributeFailure
+        expr: sum(rate(nuxia2_referral_distribute_total{result="failed"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: nuxia2
+        annotations:
+          summary: "레퍼럴 배분 트랜잭션 실패 발생"
+          description: "주문 승인과 원장 기록의 원자성 실패. DB 트랜잭션 상태 확인 필요."
+
+      - alert: MinorHoldGrowth
+        expr: increase(nuxia2_minor_hold_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: info
+          team: nuxia2
+        annotations:
+          summary: "1시간 내 미성년 유보 계정 10명 초과 증가"
+          description: "관리자 수동 심사 큐 확인 필요."

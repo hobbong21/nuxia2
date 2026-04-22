@@ -78,6 +78,9 @@ jobs:
       ADMIN_API_KEY: test_admin_api_key_v4
       METRICS_INTERNAL_SECRET: test_metrics_internal_secret
       TOTP_ISSUER: Nuxia2-Test
+      OTP_DRY_RUN: 1
+      SMTP_FROM: noreply@test.nuxia2.kr
+      ADMIN_REQUIRE_2FA: false
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

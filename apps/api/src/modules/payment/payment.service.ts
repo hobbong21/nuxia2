@@ -10,6 +10,7 @@ import { PrismaService } from '../../common/prisma.module'
 import { ReferralEngineService } from '../referral/engine.service'
 import { PortOneClient } from './portone.client'
 import { bi } from '../../common/util/serialize.util'
+import { MetricsService } from '../metrics/metrics.service'
 
 @Injectable()
 export class PaymentService {
@@ -19,6 +20,7 @@ export class PaymentService {
     private readonly prisma: PrismaService,
     private readonly portone: PortOneClient,
     private readonly referral: ReferralEngineService,
+    private readonly metrics: MetricsService,
   ) {}
 
   /**
@@ -75,6 +77,8 @@ export class PaymentService {
     // P1-02: 안전한 amount 파싱 (숫자 OR decimal-integer string 만 허용)
     const portoneTotal = parsePortOneTotal(payment.amount?.total)
     if (portoneTotal !== order.totalAmountKrw) {
+      // v0.5 M1: 금액 불일치 — 메트릭 증가 후 throw
+      this.metrics.incPaymentConfirm('mismatch')
       throw new ConflictException({
         code: 'AMOUNT_MISMATCH',
         message: `expected=${order.totalAmountKrw}, portone=${portoneTotal}`,
@@ -82,23 +86,29 @@ export class PaymentService {
     }
 
     // Step 4: Serializable transaction (status flip + referral.distribute)
-    const updated = await this.prisma.$transaction(
-      async (tx) => {
-        const u = await tx.order.update({
-          where: { id: orderId },
-          data: {
-            status: OrderStatus.PAID,
-            paymentId,
-            paymentMethod: payment.payMethod,
-          },
-        })
-        await this.referral.distribute(tx, u.id)
-        return u
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    )
+    try {
+      const updated = await this.prisma.$transaction(
+        async (tx) => {
+          const u = await tx.order.update({
+            where: { id: orderId },
+            data: {
+              status: OrderStatus.PAID,
+              paymentId,
+              paymentMethod: payment.payMethod,
+            },
+          })
+          await this.referral.distribute(tx, u.id)
+          return u
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
 
-    return this.buildConfirmResponse(updated, 'payment confirmed')
+      this.metrics.incPaymentConfirm('success')
+      return this.buildConfirmResponse(updated, 'payment confirmed')
+    } catch (err) {
+      this.metrics.incPaymentConfirm('failed')
+      throw err
+    }
   }
 
   private buildConfirmResponse(order: any, message: string, alreadyPaid = false) {

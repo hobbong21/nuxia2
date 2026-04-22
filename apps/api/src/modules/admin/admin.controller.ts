@@ -142,4 +142,29 @@ export class AdminController {
   releasePayout(@Req() req: any, @Param('id') id: string) {
     return this.svc.releasePayout(id, req.user.userId)
   }
+
+  // --------------------------- v0.5 M2: Audit Logs ---------------------------
+
+  /**
+   * GET /admin/audit-logs?kind=&actorUserId=&targetType=&targetId=&cursor=&limit=
+   * 응답: PaginatedAuditLogsSchema (shared-types)
+   */
+  @Get('audit-logs')
+  listAuditLogs(
+    @Query('kind') kind?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('targetType') targetType?: string,
+    @Query('targetId') targetId?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.svc.listAuditLogs({
+      kind,
+      actorUserId,
+      targetType,
+      targetId,
+      cursor,
+      limit: limit ? Math.min(Number(limit) || 50, 200) : 50,
+    })
+  }
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { LedgerStatus, LedgerType, Prisma, UserRole, UserStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.module'
 import { floorBps } from '../../common/util/money.util'
+import { MetricsService } from '../metrics/metrics.service'
 
 // Absolute contract: 1대 3% / 2대 5% / 3대 17% = 25%
 export const GENERATIONS: ReadonlyArray<{ gen: number; bps: number }> = [
@@ -14,7 +15,10 @@ export const GENERATIONS: ReadonlyArray<{ gen: number; bps: number }> = [
 export class ReferralEngineService {
   private readonly logger = new Logger('ReferralEngine')
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   /**
    * Fetch up to 3 ancestor referrers for a given user.
@@ -66,71 +70,85 @@ export class ReferralEngineService {
     // (T6) 임직원 구매자는 레퍼럴 발생 대상에서 제외 — 상위는 수익 없음
     if (order.user.role === UserRole.STAFF || order.user.role === UserRole.STAFF_FAMILY) {
       this.logger.warn(`Skip referral distribute: buyer is STAFF. orderId=${orderId}`)
+      for (let i = 0; i < 3; i++) this.metrics.incReferralDistribute('skipped')
       return { created: 0, skipped: 3 }
     }
 
-    const ancestors = await this.getAncestors(tx, order.userId)
-    let created = 0
-    let skipped = 0
+    try {
+      const ancestors = await this.getAncestors(tx, order.userId)
+      let created = 0
+      let skipped = 0
 
-    for (const rule of GENERATIONS) {
-      const anc = ancestors.find((a) => a.gen === rule.gen)
-      if (!anc) {
-        skipped++
-        this.logger.log(`gen=${rule.gen} 결손 → 플랫폼 귀속 (order=${orderId})`)
-        continue
-      }
-      const beneficiary = await tx.user.findUniqueOrThrow({ where: { id: anc.id } })
+      for (const rule of GENERATIONS) {
+        const anc = ancestors.find((a) => a.gen === rule.gen)
+        if (!anc) {
+          skipped++
+          this.metrics.incReferralDistribute('skipped')
+          this.logger.log(`gen=${rule.gen} 결손 → 플랫폼 귀속 (order=${orderId})`)
+          continue
+        }
+        const beneficiary = await tx.user.findUniqueOrThrow({ where: { id: anc.id } })
 
-      // (T6) STAFF 가드
-      if (
-        beneficiary.role === UserRole.STAFF ||
-        beneficiary.role === UserRole.STAFF_FAMILY
-      ) {
-        skipped++
-        continue
-      }
-      if (
-        beneficiary.status === UserStatus.BANNED ||
-        beneficiary.status === UserStatus.WITHDRAWN
-      ) {
-        skipped++
-        continue
+        // (T6) STAFF 가드
+        if (
+          beneficiary.role === UserRole.STAFF ||
+          beneficiary.role === UserRole.STAFF_FAMILY
+        ) {
+          skipped++
+          this.metrics.incReferralDistribute('skipped')
+          continue
+        }
+        if (
+          beneficiary.status === UserStatus.BANNED ||
+          beneficiary.status === UserStatus.WITHDRAWN
+        ) {
+          skipped++
+          this.metrics.incReferralDistribute('skipped')
+          continue
+        }
+
+        const amount = floorBps(order.totalAmountKrw, rule.bps)
+        if (amount <= 0n) {
+          skipped++
+          this.metrics.incReferralDistribute('skipped')
+          continue
+        }
+
+        // (T7) MINOR_HOLD / suspended / payoutEligibility=false → ledger 는 남기되 상태를 분리
+        const status: LedgerStatus =
+          beneficiary.status === UserStatus.ACTIVE && beneficiary.payoutEligibility
+            ? LedgerStatus.PENDING
+            : LedgerStatus.SUSPENDED_FOR_REVIEW
+
+        try {
+          await tx.referralLedger.create({
+            data: {
+              orderId,
+              beneficiaryUserId: beneficiary.id,
+              generation: rule.gen,
+              rateBps: rule.bps,
+              amountKrw: amount,
+              type: LedgerType.EARN,
+              status,
+            },
+          })
+          created++
+          this.metrics.incReferralDistribute('success')
+        } catch (e: any) {
+          // Idempotent: unique violation → already distributed for this slot
+          if (e?.code === 'P2002') {
+            this.metrics.incReferralDistribute('skipped')
+            continue
+          }
+          throw e
+        }
       }
 
-      const amount = floorBps(order.totalAmountKrw, rule.bps)
-      if (amount <= 0n) {
-        skipped++
-        continue
-      }
-
-      // (T7) MINOR_HOLD / suspended / payoutEligibility=false → ledger 는 남기되 상태를 분리
-      const status: LedgerStatus =
-        beneficiary.status === UserStatus.ACTIVE && beneficiary.payoutEligibility
-          ? LedgerStatus.PENDING
-          : LedgerStatus.SUSPENDED_FOR_REVIEW
-
-      try {
-        await tx.referralLedger.create({
-          data: {
-            orderId,
-            beneficiaryUserId: beneficiary.id,
-            generation: rule.gen,
-            rateBps: rule.bps,
-            amountKrw: amount,
-            type: LedgerType.EARN,
-            status,
-          },
-        })
-        created++
-      } catch (e: any) {
-        // Idempotent: unique violation → already distributed for this slot
-        if (e?.code === 'P2002') continue
-        throw e
-      }
+      return { created, skipped }
+    } catch (err) {
+      this.metrics.incReferralDistribute('failed')
+      throw err
     }
-
-    return { created, skipped }
   }
 
   /**

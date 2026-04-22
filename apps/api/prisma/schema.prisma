@@ -133,6 +133,9 @@ model User {
   totpEnabled        Boolean    @default(false)
   totpEnabledAt      DateTime?
 
+  // v0.5 M3 — OTP 백업 (SMS/이메일). E.164 형식으로 저장, 앱 레벨 암호화 권장.
+  phoneE164          String?
+
   orders             Order[]
   ledgers            ReferralLedger[] @relation("Beneficiary")
   payouts            Payout[]
@@ -140,6 +143,7 @@ model User {
   abuseLogs          AbuseLog[]       @relation("PrimaryUser")
   auditLogs          AuditLog[]       @relation("Actor")
   sessions           Session[]
+  otpChallenges      OtpChallenge[]
 
   @@index([referrerId])
   @@index([status])
@@ -424,4 +428,28 @@ model WebhookEvent {
 
   @@unique([source, externalId, eventType, eventTimestamp])
   @@index([processedAt])
+}
+
+// ============================================================================
+// v0.5 M3 — OTP Challenge (SMS/Email 백업 인증)
+// ============================================================================
+
+enum OtpKind {
+  SMS
+  EMAIL
+}
+
+model OtpChallenge {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         OtpKind
+  codeHash     String   // bcrypt hash of 6-digit code
+  expiresAt    DateTime
+  attemptCount Int      @default(0)
+  usedAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, usedAt])
+  @@index([createdAt])
 }

@@ -50,6 +50,25 @@ export const TotpVerifyResponseSchema = z.object({
 });
 export type TotpVerifyResponse = z.infer<typeof TotpVerifyResponseSchema>;
 
+// ---------- v0.5 M3-FE: OTP backup 채널 ----------
+export const OtpChannelSchema = z.enum(['SMS', 'EMAIL']);
+export type OtpChannel = z.infer<typeof OtpChannelSchema>;
+
+export const OtpRequestResponseSchema = z.object({
+  ok: z.literal(true),
+  /** 전송 TTL (초). BE 기본 180 (3분) */
+  expiresInSec: z.number().int().positive().optional(),
+});
+export type OtpRequestResponse = z.infer<typeof OtpRequestResponseSchema>;
+
+/** 로그인 2단계 OTP 검증 요청에 userId가 필요한 경우를 위한 request 형태 */
+export const OtpLoginVerifyRequestSchema = z.object({
+  userId: z.string(),
+  kind: OtpChannelSchema,
+  code: z.string().regex(/^\d{6}$/),
+});
+export type OtpLoginVerifyRequest = z.infer<typeof OtpLoginVerifyRequestSchema>;
+
 // ---------- 공용 fetch ----------
 
 async function authFetch<T>(
@@ -117,6 +136,32 @@ export const authApi = {
   /** 2FA 비활성화 (현재 코드 요구) */
   async disable2FA(code: string) {
     return authFetch('/auth/2fa/disable', { code }, z.object({ ok: z.literal(true) }));
+  },
+
+  // ---------- v0.5 M3-FE: OTP 백업 ----------
+
+  /**
+   * OTP 코드 요청 (로그인 2단계 또는 마이페이지 테스트 발송).
+   *  - 로그인 대체 경로: credentials 세션 + userId(서버가 쿠키로 식별)로 요청
+   *  - 마이페이지 테스트: 동일 엔드포인트, 본인 userId (세션 기반)
+   */
+  async requestOtp(kind: OtpChannel, opts?: { userId?: string }): Promise<OtpRequestResponse> {
+    return authFetch(
+      '/auth/otp/request',
+      { kind, ...(opts?.userId ? { userId: opts.userId } : {}) },
+      OtpRequestResponseSchema,
+    );
+  },
+
+  /**
+   * OTP 코드 검증 → 2단계 로그인 완료. 성공 시 AuthResponse.
+   */
+  async verifyOtp(code: string, kind: OtpChannel, opts?: { userId?: string }) {
+    return authFetch(
+      '/auth/otp/verify',
+      { code, kind, ...(opts?.userId ? { userId: opts.userId } : {}) },
+      AuthResponseSchema,
+    );
   },
 
   /** 현재 2FA 상태 조회 (마이페이지 진입 시) */

@@ -90,3 +90,64 @@ export const TotpLoginRequestSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 export type TotpLoginRequest = z.infer<typeof TotpLoginRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// M2 — AuditLog (v0.5)
+// ---------------------------------------------------------------------------
+
+/** 관리자 감사 로그 kind. audit.decorator의 @Audit 데코레이터와 일치. */
+export const AuditLogKindSchema = z.enum([
+  'USER_FLAG',
+  'USER_RELEASE_MINOR',
+  'USER_MARK_STAFF',
+  'USER_SUSPEND',
+  'PAYOUT_RUN',
+  'PAYOUT_RELEASE',
+]);
+export type AuditLogKind = z.infer<typeof AuditLogKindSchema>;
+
+/** GET /admin/audit-logs 단위 아이템 */
+export const AuditLogSchema = z.object({
+  id: IdSchema,
+  actorUserId: IdSchema,
+  /** 행위자 닉네임 (JOIN 조회 결과, 탈퇴 등으로 null 가능) */
+  actorNickname: z.string().nullable(),
+  kind: AuditLogKindSchema,
+  targetType: z.string(),
+  targetId: IdSchema,
+  /** before/after key 비교 요약 (예: "status,payoutEligibility"). 변경 없으면 null */
+  diffSummary: z.string().nullable(),
+  createdAt: IsoDateTimeSchema,
+});
+export type AuditLog = z.infer<typeof AuditLogSchema>;
+
+/** GET /admin/audit-logs 응답 */
+export const PaginatedAuditLogsSchema = z.object({
+  items: z.array(AuditLogSchema),
+  nextCursor: IdSchema.nullable(),
+});
+export type PaginatedAuditLogs = z.infer<typeof PaginatedAuditLogsSchema>;
+
+// ---------------------------------------------------------------------------
+// M3 — OTP backup (v0.5)
+// ---------------------------------------------------------------------------
+
+/** OTP 채널 종류 */
+export const OtpKindSchema = z.enum(['SMS', 'EMAIL']);
+export type OtpKind = z.infer<typeof OtpKindSchema>;
+
+/** POST /auth/otp/request */
+export const OtpRequestSchema = z.object({
+  kind: OtpKindSchema,
+  /** 로그인 2단계 경로용(userId). 마이페이지에서는 세션 기반이므로 생략 가능 */
+  userId: IdSchema.optional(),
+});
+export type OtpRequest = z.infer<typeof OtpRequestSchema>;
+
+/** POST /auth/otp/verify */
+export const OtpVerifySchema = z.object({
+  kind: OtpKindSchema,
+  code: z.string().regex(/^\d{6}$/),
+  userId: IdSchema.optional(),
+});
+export type OtpVerify = z.infer<typeof OtpVerifySchema>;

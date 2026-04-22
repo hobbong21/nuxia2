@@ -11,6 +11,7 @@ import { ApiTags } from '@nestjs/swagger'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { PrismaService } from '../../common/prisma.module'
 import { PaymentService } from '../payment/payment.service'
+import { MetricsService } from '../metrics/metrics.service'
 
 /**
  * PortOne V2 webhook ingestion endpoint.
@@ -27,6 +28,7 @@ export class PortoneWebhookController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payments: PaymentService,
+    private readonly metrics: MetricsService,
   ) {}
 
   @Post()
@@ -50,6 +52,8 @@ export class PortoneWebhookController {
         this.logger.warn('Webhook signature skipped (ALLOW_UNSIGNED_WEBHOOK=1, non-prod)')
       } else {
         this.logger.warn('Invalid webhook signature')
+        // v0.5 M1: 서명 거부 메트릭
+        this.metrics.incWebhookReceived('portone', 'rejected')
         throw new BadRequestException({ code: 'WEBHOOK_BAD_SIGNATURE', message: 'bad sig' })
       }
     }
@@ -76,10 +80,15 @@ export class PortoneWebhookController {
     } catch (e: any) {
       if (e?.code === 'P2002') {
         this.logger.log(`duplicate webhook ignored: ${paymentId}:${eventType}`)
+        // v0.5 M1: 중복 이벤트 메트릭
+        this.metrics.incWebhookReceived('portone', 'duplicate')
         return { ok: true, duplicate: true }
       }
       throw e
     }
+
+    // v0.5 M1: 신규 유효 이벤트 수신 메트릭
+    this.metrics.incWebhookReceived('portone', 'ok')
 
     // Dispatch (best-effort; server re-verifies with PortOne anyway)
     try {

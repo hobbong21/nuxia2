@@ -50,6 +50,34 @@ export const AbuseKindSchema = z.enum([
 ]);
 export type AbuseKind = z.infer<typeof AbuseKindSchema>;
 
+// ---------- Audit Log (v0.5 M2) ----------
+// TODO(v0.5-sync): BE가 shared-types에 AuditLogSchema/AuditLogKindSchema/
+// PaginatedAuditLogsSchema를 publish하면 import로 교체한다.
+export const AuditLogKindSchema = z.enum([
+  'USER_FLAG',
+  'USER_RELEASE_MINOR',
+  'USER_MARK_STAFF',
+  'USER_SUSPEND',
+  'PAYOUT_RUN',
+  'PAYOUT_RELEASE',
+]);
+export type AuditLogKind = z.infer<typeof AuditLogKindSchema>;
+
+const AuditLogSchema = z.object({
+  id: z.string(),
+  actorUserId: z.string(),
+  actorNickname: z.string().nullable().optional(),
+  kind: AuditLogKindSchema,
+  targetType: z.string(),
+  targetId: z.string(),
+  createdAt: z.string(),
+  diffSummary: z.string().nullable().optional(),
+  /** 전/후 스냅샷 (S1에서 기록, 상세 모달에서 표시) */
+  before: z.record(z.unknown()).nullable().optional(),
+  after: z.record(z.unknown()).nullable().optional(),
+});
+export type AuditLog = z.infer<typeof AuditLogSchema>;
+
 // TODO(v0.4-sync): BE가 shared-types에 AbuseLogRowSchema 추가 후 import로 교체
 const AbuseLogRowSchema = z.object({
   id: z.string(),
@@ -98,6 +126,7 @@ function cursor<T extends z.ZodTypeAny>(itemSchema: T) {
 
 const PaginatedAdminUsersSchema = cursor(AdminUserSchema);
 const PaginatedAbuseLogsSchema = cursor(AbuseLogRowSchema);
+const PaginatedAuditLogsSchema = cursor(AuditLogSchema);
 
 // TODO(v0.4-sync): BE PayoutSchema 를 shared-types 에서 import
 const PayoutRowSchema = z.object({
@@ -179,6 +208,24 @@ const MOCK_PAYOUTS: Payout[] = [
   { id: 'c0000000000000000000000005', userId: 'c0000000000000000000000014', periodStart: '2026-04-01T00:00:00Z', periodEnd: '2026-04-30T23:59:59Z', amountGrossKrw: '95000',  amountTaxKrw: '3135',  amountNetKrw: '91865',  status: 'CLAWBACK_REQUESTED', bankMaskedAccount: '3333-**-22222', paidAt: null },
 ];
 
+const MOCK_AUDIT_LOGS: AuditLog[] = [
+  { id: 'al01', kind: 'USER_FLAG',           actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-108', diffSummary: 'flagged: false → true (reason: 의심 체인)', before: { flagged: false }, after: { flagged: true,  reason: '의심 체인' }, createdAt: iso(5) },
+  { id: 'al02', kind: 'USER_FLAG',           actorUserId: 'u-admin2', actorNickname: '관리자B', targetType: 'User',   targetId: 'u-112', diffSummary: 'flagged: false → true (reason: 자동 룰)', before: { flagged: false }, after: { flagged: true,  reason: '자동 룰' }, createdAt: iso(25) },
+  { id: 'al03', kind: 'USER_FLAG',           actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-119', diffSummary: 'flagged: true → false (오탐 해제)',       before: { flagged: true },  after: { flagged: false },                        createdAt: iso(90) },
+  { id: 'al04', kind: 'USER_RELEASE_MINOR',  actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-004', diffSummary: 'status: MINOR_HOLD → ACTIVE',             before: { status: 'MINOR_HOLD' }, after: { status: 'ACTIVE' },              createdAt: iso(140) },
+  { id: 'al05', kind: 'USER_RELEASE_MINOR',  actorUserId: 'u-admin2', actorNickname: '관리자B', targetType: 'User',   targetId: 'u-404', diffSummary: 'status: MINOR_HOLD → ACTIVE',             before: { status: 'MINOR_HOLD' }, after: { status: 'ACTIVE' },              createdAt: iso(320) },
+  { id: 'al06', kind: 'USER_MARK_STAFF',     actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-staff',  diffSummary: 'role: CUSTOMER → STAFF',              before: { role: 'CUSTOMER' }, after: { role: 'STAFF' },                   createdAt: iso(600) },
+  { id: 'al07', kind: 'USER_MARK_STAFF',     actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-staff2', diffSummary: 'role: CUSTOMER → STAFF_FAMILY',       before: { role: 'CUSTOMER' }, after: { role: 'STAFF_FAMILY' },            createdAt: iso(900) },
+  { id: 'al08', kind: 'USER_SUSPEND',        actorUserId: 'u-admin2', actorNickname: '관리자B', targetType: 'User',   targetId: 'u-107', diffSummary: 'status: ACTIVE → SUSPENDED (reason: 어뷰징 반복)', before: { status: 'ACTIVE' }, after: { status: 'SUSPENDED', reason: '어뷰징 반복' }, createdAt: iso(1200) },
+  { id: 'al09', kind: 'USER_SUSPEND',        actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'User',   targetId: 'u-113', diffSummary: 'status: ACTIVE → BANNED',                 before: { status: 'ACTIVE' }, after: { status: 'BANNED' },                createdAt: iso(1800) },
+  { id: 'al10', kind: 'PAYOUT_RUN',          actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'PayoutBatch', targetId: 'pb-202604', diffSummary: '배치 실행: 342건 / 12,450,000원',  before: null, after: { totalCount: 342, totalNetKrw: '12450000' }, createdAt: iso(2400) },
+  { id: 'al11', kind: 'PAYOUT_RUN',          actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'PayoutBatch', targetId: 'pb-202603', diffSummary: '배치 실행: 289건 / 9,820,000원',   before: null, after: { totalCount: 289, totalNetKrw: '9820000' },  createdAt: iso(43200) },
+  { id: 'al12', kind: 'PAYOUT_RUN',          actorUserId: 'u-admin2', actorNickname: '관리자B', targetType: 'PayoutBatch', targetId: 'pb-202602', diffSummary: '배치 실행: 213건 / 7,310,000원',   before: null, after: { totalCount: 213, totalNetKrw: '7310000' },  createdAt: iso(86400) },
+  { id: 'al13', kind: 'PAYOUT_RELEASE',      actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'Payout',     targetId: 'c0000000000000000000000004', diffSummary: 'status: WITHHELD → PENDING', before: { status: 'WITHHELD' }, after: { status: 'PENDING' }, createdAt: iso(3600) },
+  { id: 'al14', kind: 'PAYOUT_RELEASE',      actorUserId: 'u-admin2', actorNickname: '관리자B', targetType: 'Payout',     targetId: 'c0000000000000000000000099', diffSummary: 'status: CLAWBACK_REQUESTED → PAID', before: { status: 'CLAWBACK_REQUESTED' }, after: { status: 'PAID' }, createdAt: iso(7200) },
+  { id: 'al15', kind: 'PAYOUT_RELEASE',      actorUserId: 'u-admin1', actorNickname: '관리자A', targetType: 'Payout',     targetId: 'c0000000000000000000000098', diffSummary: 'status: WITHHELD → PAID',       before: { status: 'WITHHELD' }, after: { status: 'PAID' },                   createdAt: iso(10800) },
+];
+
 const MOCK_KPI: AdminKpi = {
   blockedThisMonth: MOCK_ABUSE_LOGS.length,
   pendingPayouts: '488005',
@@ -240,6 +287,16 @@ function emptyCursor<T>(): Cursor<T> {
 export interface GetAbuseLogsParams { kind?: AbuseKind; cursor?: string; limit?: number }
 export interface GetUsersParams     { query?: string;   cursor?: string; limit?: number }
 export interface GetPayoutsParams   { cursor?: string;  limit?: number }
+export interface GetAuditLogsParams {
+  kind?: AuditLogKind;
+  /** 행위자 닉네임 substring (BE 서버-side 매칭; 이 FE는 GET 파라미터로 전달만) */
+  actor?: string;
+  actorUserId?: string;
+  targetType?: string;
+  targetId?: string;
+  cursor?: string;
+  limit?: number;
+}
 
 export const adminApi = {
   async getKpi(): Promise<AdminKpi> {
@@ -371,6 +428,46 @@ export const adminApi = {
     } catch (e) {
       console.error('[admin] flagUser failed', e);
       throw e;
+    }
+  },
+
+  async getAuditLogs({
+    kind,
+    actor,
+    actorUserId,
+    targetType,
+    targetId,
+    cursor,
+    limit = 20,
+  }: GetAuditLogsParams = {}): Promise<Cursor<AuditLog>> {
+    if (USE_MOCK) {
+      let filtered = MOCK_AUDIT_LOGS;
+      if (kind) filtered = filtered.filter((x) => x.kind === kind);
+      if (actorUserId) filtered = filtered.filter((x) => x.actorUserId === actorUserId);
+      if (actor) {
+        const q = actor.toLowerCase();
+        filtered = filtered.filter((x) => (x.actorNickname ?? '').toLowerCase().includes(q));
+      }
+      if (targetType) filtered = filtered.filter((x) => x.targetType === targetType);
+      if (targetId) {
+        const q = targetId.toLowerCase();
+        filtered = filtered.filter((x) => x.targetId.toLowerCase().includes(q));
+      }
+      return paginate(filtered, cursor, limit);
+    }
+    try {
+      const json = await adminFetch('/admin/audit-logs', {
+        query: { kind, actor, actorUserId, targetType, targetId, cursor, limit },
+      });
+      const parsed = PaginatedAuditLogsSchema.safeParse(json);
+      if (!parsed.success) {
+        console.error('[admin] /admin/audit-logs schema mismatch', parsed.error.flatten());
+        return emptyCursor();
+      }
+      return parsed.data;
+    } catch (e) {
+      console.error('[admin] getAuditLogs failed', e);
+      return emptyCursor();
     }
   },
 

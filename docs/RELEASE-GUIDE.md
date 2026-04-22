@@ -69,6 +69,15 @@ gh release view v0.4.0
 4. 커밋 후 `git tag -a vX.Y.Z -m "..."` + `git push origin vX.Y.Z`
 5. `gh release create vX.Y.Z --notes-file RELEASE_NOTES_vX.Y.Z.md --latest`
 
+## v0.5 Release (완료 후)
+
+```bash
+gh release create v0.5.0 \
+  --title "v0.5.0 — Metrics Wired + AuditLog UI + OTP Backup" \
+  --notes-file RELEASE_NOTES_v0.5.0.md \
+  --latest
+```
+
 ## 참고: `gh` 설치 경로
 
 Windows에서 `gh` CLI가 설치된 위치: `C:\Program Files\GitHub CLI\gh.exe`

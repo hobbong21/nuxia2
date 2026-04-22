@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 const NAV = [
   { href: '/admin',            label: '대시보드', icon: '📊' },
   { href: '/admin/abuse-logs', label: '어뷰징',   icon: '🛡️' },
+  { href: '/admin/audit-logs', label: '감사 로그', icon: '📝' },
   { href: '/admin/users',      label: '사용자',   icon: '👥' },
   { href: '/admin/payouts',    label: '정산',     icon: '💰' },
 ];

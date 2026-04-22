@@ -10,6 +10,7 @@ import { Prisma, UserRole, UserStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma.module'
 import { encryptCi, encryptPii, hashCi, hashForAudit } from '../../common/util/crypto.util'
 import { randomBytes } from 'crypto'
+import { MetricsService } from '../metrics/metrics.service'
 
 export interface CreateUserInput {
   email: string
@@ -27,7 +28,10 @@ export interface CreateUserInput {
 export class UserService {
   private readonly logger = new Logger('UserService')
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   /**
    * Create a user enforcing:
@@ -198,6 +202,8 @@ export class UserService {
     await tx.abuseLog.create({
       data: { kind, severity: 3, evidence, action: 'BLOCKED' },
     })
+    // v0.5 M1: 모든 어뷰징 차단은 메트릭에도 기록 (kind는 AbuseKind enum 문자열)
+    this.metrics.incAbuseBlocked(String(kind))
   }
 }
 
