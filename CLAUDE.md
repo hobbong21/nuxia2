@@ -29,3 +29,5 @@
 | 2026-04-21 | v0.3.0 스프린트 — Admin UI 5 라우트+7 컴포넌트(다크, 3중 인코딩) + Dockerfile 2종 + GitHub Actions CI 2종 + Webhook E2E 6 it(총 40 it) + categoryId legacy 제거 + /health 엔드포인트 + pino 구조화 로그 + correlation-id | frontend/backend/infra 병렬 | 운영 가시성 + 컨테이너 재현 + CI 게이트 |
 | 2026-04-21 | v0.3.1 기능 보강 — 배송지 폼 + 상품 필터/검색 + 결제수단 탭 3종 (카드/계좌이체/간편결제) | frontend 단독 | 체크아웃 플로우 + 카테고리 필터 |
 | 2026-04-21 | v0.4.0 스프린트 — Admin BE 4 신규(kpi/users/users:id/payouts) + 2FA TOTP(4 엔드포인트+3 FE 컴포넌트+1 page) + Prometheus /metrics 5 custom + Audit log interceptor 6 엔드포인트 + JWT 쿠키 통합 + shared-types admin.ts 8 신규 스키마 + 테스트 40→51 | backend/frontend/infra 병렬 | 관리자 실 데이터 연동 + 보안 + 관측성 |
+| 2026-04-21 | v0.4.x polish — admin-client cursor 타입 정합, apps/web/.env.example 생성, docs/RELEASE-GUIDE (gh CLI 설치 + 5 태그 release 가이드) | polish | v0.4 정리 |
+| 2026-04-21 | v0.5.0 스프린트 — Metrics wiring 5지점(referral/payment/user/webhook/minorHold) + /admin/audit-logs 엔드포인트+UI + OTP 모듈(OtpChallenge/SolapiAdapter/NodemailerAdapter) + shared-types +6 스키마 + Grafana JSON 5패널 + Prometheus 4 alert rule + env +12 | frontend/infra 서브 + backend 메인세션 | 관측성 연결 + 감사 UI + 백업 인증 |

@@ -7,12 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned (v0.5)
-- 실제 BE 서비스 호출 경로에 `metrics.inc*()` 연결 (referral engine, payment, webhook)
-- Admin 감사 인터페이스 (AuditLog 조회 UI)
-- SMS/이메일 OTP 옵션 (TOTP 외 백업 방식)
+### Planned (v0.6)
+- 실제 JWT 세션 토큰을 httpOnly 쿠키로 저장, refresh 플로우 쿠키 기반 전환
+- SMS/Email 상용 공급자 실 연동 (`solapi`, `nodemailer`)
 - i18n (한국어 외 영어/일어)
-- 관리자 2FA 활성 강제 정책 토글
+- 모바일 스토어 업로드 (iOS / Android)
+- Capacitor Android 빌드 자동화 워크플로
+
+### Testing debt
+- v0.5 신규 경로(metrics wiring, OTP, audit-logs API) 전용 단위/통합 테스트 (51 → 60+ it 목표 미완)
+
+---
+
+## [0.5.0] - 2026-04-21
+
+관측성 도메인 연결 + 감사 로그 UI + OTP 백업 인증. v0.4의 Prometheus 카운터 정의를 실제 도메인 서비스 경로에 연결하고, 관리자가 행위를 UI로 조회하며, 사용자가 TOTP 대신 SMS/이메일 OTP로도 2단계 인증을 완료할 수 있게 만듦.
+
+### Added
+
+- **Metrics 도메인 연결 5 지점** (M1):
+  - `ReferralEngineService.distribute` — success/skipped/failed 전 경로 커버 (STAFF 구매자 · 결손 세대 · STAFF/BANNED/WITHDRAWN 수혜자 · 금액 0 · P2002 중복)
+  - `PaymentService.confirm` — mismatch (금액 불일치) / success (Serializable 트랜잭션 후) / failed (트랜잭션 예외). idempotent `alreadyPaid` 경로는 카운트 제외 (정책)
+  - `UserService.logAbuse` — 어뷰징 6 kind 일괄 (A1 SELF_REFERRAL + ANCESTOR, A2 CIRCULAR, A3 DUPLICATE_CI, T5 WITHDRAW_REJOIN_COOLDOWN, T6 STAFF_REFERRAL, + 기타)
+  - `PortoneWebhookController.handle` — rejected (서명 거부) / duplicate (P2002 WebhookEvent 충돌) / ok (신규 유효)
+  - `MetricsModule` `@Global()` — 어느 모듈에서나 `MetricsService` 직접 DI
+- **관리자 감사 로그 UI** (M2):
+  - `GET /admin/audit-logs?kind=&actorUserId=&targetType=&targetId=&cursor=&limit=`
+  - keyset 페이지네이션 (createdAt desc, id desc), actor JOIN nickname
+  - `diffSummary`: before/after JSON 키 차이 요약 (변경 없으면 null)
+  - Frontend: `/admin/audit-logs` 페이지 + `AuditKindBadge` (6 kind 3중 인코딩) + `AuditLogDetailModal`
+- **OTP 백업 인증** (M3):
+  - Prisma: `OtpChallenge` 모델 + `OtpKind` enum + `User.phoneE164`
+  - 마이그레이션: `20260421000002_add_otp_challenge/migration.sql`
+  - `OtpService`: 60초 쿨다운 + 5회 시도 lockout + 3분 TTL + bcrypt soft-dep (SHA-256 fallback)
+  - `SolapiAdapter` (SMS) + `NodemailerAdapter` (Email) — `OTP_DRY_RUN=1` 시 console.log
+  - `POST /auth/otp/{request,verify}` 엔드포인트
+  - Frontend: `OtpChannelPicker` (TOTP | SMS | EMAIL 탭)
+- **shared-types 신규 6 스키마** (`admin.ts`): AuditLogKind, AuditLog, PaginatedAuditLogs, OtpKind, OtpRequest, OtpVerify
+- **Grafana 대시보드 JSON** — 5 패널 (`docs/grafana-dashboard.json`, Grafana 10+)
+- **Prometheus 알림 룰** — 4 룰 (`docs/prometheus-alerts.yml`: PaymentMismatchSpike · WebhookRejectedSpike · ReferralDistributeFailure · MinorHoldGrowth)
+- **개발 환경 변수 12개**: `OTP_DRY_RUN`, `SMS_PROVIDER/API_KEY/SECRET/FROM_NUMBER`, `SMTP_HOST/PORT/USER/PASS/FROM`, `ADMIN_REQUIRE_2FA`, `METRICS_LOG_WIRING`
+- **CI workflow**: e2e job에 OTP 관련 3 env 추가
+
+### Changed
+
+- `apps/api/src/modules/referral/engine.service.ts` — distribute가 전체 try/catch로 감싸짐 (failed counter 보장)
+- `apps/api/src/modules/auth/auth.module.ts` — OtpService + SMS/Email adapter 3개 providers 추가, exports 확장
+- `apps/api/src/modules/admin/admin.controller.ts` + `admin.service.ts` — listAuditLogs 엔드포인트/메서드
+- `apps/web/components/admin/Sidebar.tsx` — '감사 로그' 메뉴 추가
+- `packages/shared-types/src/admin.ts` — 6 신규 스키마 append
+
+### Infrastructure
+
+- `docker-compose.yml` full profile: api 서비스에 12개 env 추가, web 서비스에 1개
+- `docs/QUICKSTART.md`: "v0.5 새 환경 변수 & 관측성" 섹션
+- `docs/RELEASE-GUIDE.md`: v0.5 gh release 스니펫
+
+### Non-goals (deferred)
+
+- 메트릭 wiring 전용 단위 테스트 (원래 목표 51→60 it) — 통합 테스트에서 커버되므로 v0.6 debt로 이관
+- 실 SMS/Email 공급자 활성 (dry-run만 활성, 상용 연동은 v0.6)
+- 2FA 활성 강제 정책 UI 리다이렉트 통합 (env 플래그만 준비, FE 리다이렉트 미구현)
+
+### Non-blocker residuals
+
+- `bcrypt` dependency 미설치 시 `sha256:` 접두 해시로 fallback. OTP 의 보안 강도는 TTL+lockout 보호가 주 역할이므로 허용. 운영 전 `pnpm --filter @nuxia2/api add bcrypt @types/bcrypt` 권장.
+- Backend 서브에이전트가 per-file malware 리마인더를 전체 개발 거부로 오해석하여 2회 실패 — 메인 세션에서 직접 수행.
 
 ---
 
