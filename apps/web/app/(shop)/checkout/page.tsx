@@ -6,45 +6,88 @@ import { Header } from '@/components/commerce/Header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TopSheet } from '@/components/referral/TopSheet';
+import { ShippingAddressForm } from '@/components/commerce/ShippingAddressForm';
+import {
+  PaymentMethodPicker,
+  type PaymentMethod,
+} from '@/components/commerce/PaymentMethodPicker';
 import { useCartStore, cartSubtotal } from '@/stores/cart';
+import { useShippingStore } from '@/stores/shipping';
 import { formatKrw } from '@/lib/format';
 import { requestPayment } from '@/lib/portone';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api-client';
-import { CreateOrderResponseSchema } from '@nuxia2/shared-types';
+import {
+  CreateOrderResponseSchema,
+  type ShippingAddress,
+} from '@nuxia2/shared-types';
 
 /**
  * 체크아웃 — 포트원 결제 TopSheet 호출.
  * 흐름:
- *   1) POST /orders → 서버가 { orderId, paymentId, totalAmountKrw } 반환
- *   2) 프론트는 받은 paymentId 로 PortOne.requestPayment 호출 (자체 생성 금지)
+ *   1) POST /orders ({ items, shippingAddress }) → 서버가 { orderId, paymentId, totalAmountKrw } 반환
+ *   2) 선택된 결제수단의 channelKey 로 PortOne.requestPayment 호출
  *   3) 결제 성공 시 /checkout/success?paymentId=...&orderId=... 로 이동하여 confirm 호출
  */
+
+/** 결제수단 → 포트원 channelKey 매핑 (환경변수 우선) */
+const CHANNEL_KEY_MAP: Record<PaymentMethod, string> = {
+  card:
+    process.env.NEXT_PUBLIC_PORTONE_CARD_CHANNEL_KEY ?? 'channel-key-card',
+  transfer:
+    process.env.NEXT_PUBLIC_PORTONE_TRANSFER_CHANNEL_KEY ??
+    'channel-key-transfer',
+  easypay:
+    process.env.NEXT_PUBLIC_PORTONE_EASYPAY_CHANNEL_KEY ??
+    'channel-key-easypay',
+};
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { lines } = useCartStore();
+  const { savedAddress, setAddress } = useShippingStore();
+
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [agreed, setAgreed] = React.useState(false);
   const toast = useToast();
 
+  // 저장된 배송지가 있으면 "요약+수정", 없으면 폼 바로 노출
+  const [editingAddress, setEditingAddress] = React.useState(!savedAddress);
+  const [draftAddress, setDraftAddress] = React.useState<ShippingAddress | null>(
+    savedAddress ?? null,
+  );
+  const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>('card');
+
   const subtotal = cartSubtotal(lines);
 
+  const effectiveAddress = editingAddress ? draftAddress : savedAddress;
+
+  const canPay = Boolean(agreed && effectiveAddress && lines.length > 0);
+
   const onPay = async () => {
+    if (!effectiveAddress) {
+      toast.show('배송지를 입력해 주세요', 'warning');
+      return;
+    }
     if (!agreed) {
       toast.show('구매 조건에 동의해 주세요', 'warning');
       return;
     }
+    // 편집 중이었다면 저장
+    if (editingAddress) {
+      setAddress(effectiveAddress);
+    }
+
     setLoading(true);
     setSheetOpen(true);
     try {
-      // 1) 주문 생성 — 서버가 paymentId 를 결정론적으로 발급한다.
-      //    프론트 자체 생성 금지 (서버가 저장하는 paymentId 와 sync 보장).
       const createOrderPayload = {
         items: lines.map((l) => ({
           productId: l.productId,
           quantity: l.quantity,
         })),
+        shippingAddress: effectiveAddress,
       };
       let orderId: string;
       let paymentId: string;
@@ -57,26 +100,22 @@ export default function CheckoutPage() {
         orderId = order.orderId;
         paymentId = order.paymentId;
       } catch (e) {
-        // 엄격 모드: 주문 생성 실패 시 데모 fallback을 만들지 않고 즉시 중단.
-        // (cuid 규격을 지키지 않는 임시 ID는 IdSchema 검증에 실패하고, confirm 단계에서
-        //  PAYMENT_ID_MISMATCH / ORDER_NOT_FOUND 로 이어지므로 안전하지 않음.)
         toast.show('주문 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.', 'error');
         return;
       }
 
-      // 2) PortOne 결제 요청 — 서버에서 받은 paymentId 그대로 사용.
       const result = await requestPayment({
         orderName: lines[0]?.name ?? '주문상품',
         totalAmountKrw: subtotal,
         paymentId,
         customerId: 'TEMP_USER_ID',
+        channelKey: CHANNEL_KEY_MAP[paymentMethod],
       });
       if (result.code) {
         toast.show(`결제 실패: ${result.message ?? result.code}`, 'error');
         return;
       }
 
-      // 3) 결제 성공 콜백 — confirm 은 success 페이지에서 호출.
       router.push(
         `/checkout/success?paymentId=${encodeURIComponent(paymentId)}&orderId=${encodeURIComponent(orderId)}`,
       );
@@ -91,13 +130,43 @@ export default function CheckoutPage() {
   return (
     <>
       <Header title="주문/결제" showBack />
-      <main className="pb-[120px] px-base pt-base space-y-base">
-        <section className="rounded-card border border-border p-base">
-          <h2 className="text-lead mb-sm">배송지</h2>
-          <p className="text-body">홍길동 010-****-1234</p>
-          <p className="text-body-sm text-muted-foreground">
-            서울특별시 종로구 세종대로 …
-          </p>
+      <main className="pb-[140px] px-base pt-base space-y-base">
+        <section className="rounded-card border border-border p-base space-y-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lead">배송지</h2>
+            {savedAddress && !editingAddress && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftAddress(savedAddress);
+                  setEditingAddress(true);
+                }}
+                className="tap text-body-sm text-accent hover:text-accent-hover"
+              >
+                수정
+              </button>
+            )}
+          </div>
+
+          {savedAddress && !editingAddress ? (
+            <AddressSummary address={savedAddress} />
+          ) : (
+            <ShippingAddressForm
+              initialValue={draftAddress}
+              showSubmit={false}
+              onValidChange={setDraftAddress}
+            />
+          )}
+
+          {editingAddress && savedAddress && (
+            <button
+              type="button"
+              onClick={() => setEditingAddress(false)}
+              className="tap text-body-sm text-muted-foreground"
+            >
+              취소 (저장된 배송지 사용)
+            </button>
+          )}
         </section>
 
         <section className="rounded-card border border-border p-base">
@@ -105,9 +174,13 @@ export default function CheckoutPage() {
           <ul className="space-y-xs text-body-sm">
             {lines.map((l) => (
               <li key={l.productId} className="flex justify-between">
-                <span className="truncate">{l.name} × {l.quantity}</span>
+                <span className="truncate">
+                  {l.name} × {l.quantity}
+                </span>
                 <span className="tabular-nums">
-                  {formatKrw((BigInt(l.unitPriceKrw) * BigInt(l.quantity)).toString())}
+                  {formatKrw(
+                    (BigInt(l.unitPriceKrw) * BigInt(l.quantity)).toString(),
+                  )}
                 </span>
               </li>
             ))}
@@ -123,12 +196,10 @@ export default function CheckoutPage() {
 
         <section className="rounded-card border border-border p-base space-y-sm">
           <h2 className="text-lead">결제수단</h2>
-          {['신용/체크카드', '간편결제 (네이버/카카오/토스)', '가상계좌'].map((m, i) => (
-            <label key={m} className="flex items-center gap-sm tap">
-              <input type="radio" name="pay" defaultChecked={i === 1} className="h-4 w-4 accent-accent" />
-              <span className="text-body">{m}</span>
-            </label>
-          ))}
+          <PaymentMethodPicker
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+          />
         </section>
 
         <section className="rounded-card border border-border p-base space-y-sm">
@@ -153,7 +224,14 @@ export default function CheckoutPage() {
 
       <div className="fixed inset-x-0 bottom-0 z-tabbar border-t border-border bg-background/95 backdrop-blur pb-safe">
         <div className="mx-auto max-w-[1200px] p-base">
-          <Button variant="accent" size="xl" block loading={loading} onClick={onPay}>
+          <Button
+            variant="accent"
+            size="xl"
+            block
+            loading={loading}
+            disabled={!canPay}
+            onClick={onPay}
+          >
             {formatKrw(subtotal)} 결제하기
           </Button>
         </div>
@@ -169,5 +247,23 @@ export default function CheckoutPage() {
         </div>
       </TopSheet>
     </>
+  );
+}
+
+function AddressSummary({ address }: { address: ShippingAddress }) {
+  return (
+    <div className="space-y-xs">
+      <p className="text-body">
+        <span className="font-semibold">{address.recipientName}</span>{' '}
+        <span className="text-muted-foreground">{address.phone}</span>
+      </p>
+      <p className="text-body-sm text-muted-foreground">
+        [{address.zipCode}] {address.address1}
+        {address.address2 ? ` ${address.address2}` : ''}
+      </p>
+      {address.memo && (
+        <p className="text-caption text-muted-foreground">메모: {address.memo}</p>
+      )}
+    </div>
   );
 }
