@@ -24,3 +24,5 @@
 | 2026-04-21 | 초기 구성 — 에이전트 5인(analyst/designer/frontend/backend/qa) + 스킬 7종(requirements-spec / nuxia-design-extract / nextjs-capacitor-build / commerce-api-build / referral-engine / cross-boundary-qa / nuxia-commerce-orchestrator) + CLAUDE.md | 전체 하네스 | 신규 프로젝트 구축 |
 | 2026-04-21 | T1-T8 정책 확정 + Phase 2 구현 + Phase 3 QA v1/v2 fix loop (21건 resolved) | backend/frontend/qa 전원 | Phase 3 QA CLEAR |
 | 2026-04-21 | Phase 4 통합 릴리스 v0.1.0 — README 전면 보강, CHANGELOG, RELEASE_NOTES, OpenAPI export 스크립트, Capacitor 빌드 가이드 | docs + apps/api/scripts | v0.1.0 릴리스 기반 완성 |
+| 2026-04-21 | v0.2.0 스프린트 — 실 Prisma 마이그레이션(360줄) + seed.ts(23 레코드) + docker-compose + Makefile + vitest E2E(34 it) + JWT refresh + Admin API 확장 + N1/N2/N3 non-blocker 해소 | backend/infra(general-purpose)/qa 병렬 + route 수정 | 로컬 실행 가능 + 자동화 검증 |
+| 2026-04-21 | Frontend dev server 부팅 검증 — `(mypage)` 라우트 그룹이 `(shop)` 루트와 충돌 → `mypage/` 세그먼트로 변경. pnpm install 823 packages. 홈/대시보드/트리/가입/초대 렌더링 스크린샷 확인 | apps/web/app/mypage/ | 라우팅 충돌 수정 + v0.2 UI 렌더링 검증 |
