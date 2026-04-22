@@ -14,7 +14,11 @@
       "Bash(npm install:*)",
       "Bash(pnpm --version)",
       "Bash(pnpm install:*)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(gh --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(pnpm exec:*)"
     ]
   }
 }

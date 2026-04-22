@@ -51,7 +51,7 @@ export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
     contributionThisMonthKrw: BigIntStringSchema,
     /** 이번 달 내가 받을 예정 수익 (이 노드 기여 × 내 세대 비율) */
     myEarningThisMonthKrw: BigIntStringSchema,
-    children: z.array(TreeNodeSchema).default([]),
+    children: z.array(TreeNodeSchema),
   }),
 );
 export type TreeNode = {
