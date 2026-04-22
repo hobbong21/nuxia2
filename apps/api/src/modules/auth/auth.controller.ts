@@ -23,6 +23,12 @@ export const LoginSchema = z.object({
 })
 export type LoginDto = z.infer<typeof LoginSchema>
 
+// v0.2 S1: shared-types `AuthRefreshRequestSchema` 와 동일 shape.
+export const RefreshSchema = z.object({
+  refreshToken: z.string().min(1),
+})
+export type RefreshDto = z.infer<typeof RefreshSchema>
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -36,5 +42,10 @@ export class AuthController {
   @Post('login')
   async login(@Body(new ZodValidationPipe(LoginSchema)) body: LoginDto, @Req() req: any) {
     return this.auth.login(body, req.headers?.['user-agent'], req.ip)
+  }
+
+  @Post('refresh')
+  async refresh(@Body(new ZodValidationPipe(RefreshSchema)) body: RefreshDto, @Req() req: any) {
+    return this.auth.refresh(body.refreshToken, req.ip, req.headers?.['user-agent'])
   }
 }

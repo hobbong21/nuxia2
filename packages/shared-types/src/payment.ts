@@ -18,6 +18,11 @@ export const PaymentConfirmResponseSchema = z.object({
   status: z.enum(['PAID', 'PENDING_PAYMENT', 'CANCELLED', 'FAILED']),
   amountPaidKrw: BigIntStringSchema,
   message: z.string().optional(),
+  /**
+   * v0.2-N3: 체크아웃/성공 페이지 재시도(idempotent replay) 응답. 같은 paymentId 로
+   * 다시 confirm 된 경우 true. 레퍼럴 재분배는 생략됨.
+   */
+  alreadyPaid: z.boolean().optional(),
 });
 export type PaymentConfirmResponse = z.infer<typeof PaymentConfirmResponseSchema>;
 

@@ -8,10 +8,17 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "jest",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --reporter=verbose",
+    "test:jest": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
     "export:openapi": "tsx src/scripts/export-openapi.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.1",
@@ -22,6 +29,7 @@
     "@nestjs/platform-express": "^10.4.1",
     "@nestjs/swagger": "^7.4.0",
     "@nestjs/throttler": "^6.2.1",
+    "@nuxia2/shared-types": "workspace:*",
     "@portone/server-sdk": "^0.11.0",
     "@prisma/client": "^5.19.1",
     "bullmq": "^5.12.12",
@@ -50,6 +58,7 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.1",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.1"
   }
 }

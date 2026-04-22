@@ -10,7 +10,11 @@
       "WebFetch(domain:www.nuxia.co.kr)",
       "Bash(wc -l C:/I-programing/nuxia2/_workspace/*.md C:/I-programing/nuxia2/README.md C:/I-programing/nuxia2/package.json)",
       "Bash(grep -l \"\\\\\"name\\\\\":\" apps/*/package.json packages/*/package.json)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install:*)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

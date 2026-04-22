@@ -5,7 +5,8 @@ import { bi, iso } from '../../common/util/serialize.util'
 
 export interface ListProductQuery {
   q?: string
-  category?: string
+  // v0.2-N2: shared-types `ProductListQuerySchema.categoryName` 과 명칭 일치.
+  categoryName?: string
   cursor?: string
   limit?: number
 }
@@ -21,7 +22,8 @@ export class ProductService {
         // QA P1-05: enum 이행 — ON_SALE → ACTIVE
         status: { in: [ProductStatus.ACTIVE, ProductStatus.SOLD_OUT] },
         ...(query.q ? { name: { contains: query.q, mode: 'insensitive' } } : {}),
-        ...(query.category ? { category: query.category } : {}),
+        // v0.2-N2: Prisma `Product.category` 는 자유 문자열 컬럼. equals 로 정확 매칭.
+        ...(query.categoryName ? { category: { equals: query.categoryName } } : {}),
       },
       take: limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),

@@ -17,6 +17,7 @@ apps/mobile/android/app/src/main/assets/public/
 .env
 .env.local
 .env.*.local
+# Note: .env.docker.example 은 샘플이라 추적 대상. 실제 .env 는 위 룰로 무시됨.
 
 # Logs
 npm-debug.log*
@@ -42,3 +43,11 @@ apps/api/openapi.json
 # Test / Coverage
 coverage/
 .nyc_output/
+
+# pnpm install artifacts (do track lockfile; skip node_modules)
+node_modules/
+
+# Build outputs
+apps/web/.next/
+apps/web/out/
+apps/api/dist/

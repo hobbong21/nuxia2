@@ -122,6 +122,54 @@ export class AuthService {
     })
     return raw
   }
+
+  /**
+   * v0.2 S1 — JWT refresh with rotation.
+   *  - Session row 를 refreshHash 로 lookup
+   *  - 만료/revoke/유저 비활성 검사
+   *  - 새 accessToken + 새 refreshToken 발급, 기존 Session revoke
+   */
+  async refresh(refreshToken: string, ip?: string, userAgent?: string) {
+    const refreshHash = createHash('sha256').update(refreshToken).digest('hex')
+    const session = await this.prisma.session.findFirst({
+      where: { refreshHash },
+      include: { user: true },
+    })
+    if (!session) {
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_INVALID',
+        message: 'Refresh token not found',
+      })
+    }
+    if (session.revokedAt) {
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_REVOKED',
+        message: 'Refresh token revoked',
+      })
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException({
+        code: 'REFRESH_TOKEN_EXPIRED',
+        message: 'Refresh token expired',
+      })
+    }
+    const user = session.user
+    if (user.status === 'WITHDRAWN' || user.status === 'BANNED') {
+      throw new UnauthorizedException({
+        code: 'USER_INACTIVE',
+        message: 'Account not available',
+      })
+    }
+
+    const accessToken = this.issueAccessToken(user.id, user.role)
+    const newRefreshToken = await this.issueRefreshToken(user.id, ip, userAgent)
+    // Rotation — old session 을 revoke 처리
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date() },
+    })
+    return { accessToken, refreshToken: newRefreshToken }
+  }
 }
 
 // --- password hashing (scrypt) ---

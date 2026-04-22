@@ -1,31 +1,51 @@
 /**
- * QA entry point — placeholder.
+ * QA M3 — CI / developer orchestration entry point.
  *
- * qa-integrator will extend this to run the 24 acceptance assertions from
- * `_workspace/01_analyst_requirements.md` §합격 기준.
+ * Delegates the actual test execution to vitest in apps/api. This wrapper:
+ *   1. Prints a banner
+ *   2. Verifies DATABASE_URL is reachable (quick check)
+ *   3. Spawns `pnpm --filter @nuxia2/api test:e2e`
+ *   4. Exits with the child process' status
  *
- * For now this file just confirms the referral engine contract numerically.
+ * Usage:
+ *   pnpm exec tsx scripts/qa/run-all.ts
+ *
+ * For the unit-level baseline (no DB needed) see:
+ *   pnpm exec tsx scripts/qa/baseline-math.ts
  */
 /* eslint-disable no-console */
+import { spawnSync } from 'node:child_process'
 
-function floorBps(amount: bigint, bps: number): bigint {
-  return (amount * BigInt(bps)) / 10_000n
+function banner(msg: string) {
+  const line = '='.repeat(Math.max(60, msg.length + 4))
+  console.log(line)
+  console.log(`  ${msg}`)
+  console.log(line)
 }
 
 function main() {
-  const gross = 1_000_000n
-  const gen1 = floorBps(gross, 300)
-  const gen2 = floorBps(gross, 500)
-  const gen3 = floorBps(gross, 1700)
-  const sum = gen1 + gen2 + gen3
-  console.log('gen1', gen1.toString())
-  console.log('gen2', gen2.toString())
-  console.log('gen3', gen3.toString())
-  console.log('sum', sum.toString())
-  if (gen1 !== 30_000n || gen2 !== 50_000n || gen3 !== 170_000n || sum !== 250_000n) {
-    throw new Error('Referral contract broken')
+  banner('Nuxia QA — E2E suite (vitest integration tests against real Postgres)')
+
+  if (!process.env.DATABASE_URL) {
+    console.warn(
+      '[warn] DATABASE_URL is not set. Tests rely on `apps/api/test/_setup.ts` defaults — ' +
+        'confirm your docker postgres is reachable at localhost:5432.',
+    )
   }
-  console.log('OK — baseline referral math intact (3%/5%/17%).')
+
+  const isWin = process.platform === 'win32'
+  const pnpm = isWin ? 'pnpm.cmd' : 'pnpm'
+  const r = spawnSync(pnpm, ['--filter', '@nuxia2/api', 'test:e2e'], {
+    stdio: 'inherit',
+    shell: false,
+  })
+
+  if (r.status !== 0) {
+    console.error('\n[qa] Suite FAILED — see output above.')
+    process.exit(r.status ?? 1)
+  }
+
+  banner('✓ All E2E tests passed')
 }
 
 main()

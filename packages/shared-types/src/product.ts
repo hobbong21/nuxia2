@@ -49,7 +49,9 @@ export type Product = z.infer<typeof ProductSchema>;
 export const ProductListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  categoryId: IdSchema.optional(),
+  // v0.2-N2: `categoryId` → `categoryName` 리네임 (Prisma Product.category 가 자유 문자열).
+  // 향후 Category 모델이 도입되면 별도 categoryId 필드가 재추가될 예정.
+  categoryName: z.string().optional(),
   keyword: z.string().optional(),
   sort: z.enum(['popular', 'newest', 'priceAsc', 'priceDesc']).default('popular'),
 });

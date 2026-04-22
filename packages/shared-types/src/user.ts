@@ -64,3 +64,19 @@ export const AuthResponseSchema = z.object({
   user: UserSchema,
 });
 export type AuthResponse = z.infer<typeof AuthResponseSchema>;
+
+/**
+ * v0.2 S1 — Refresh token rotation.
+ *  - 프론트: accessToken 만료 시 refreshToken 으로 재발급.
+ *  - 서버: Session row TTL 검증 + rotation (새 refreshToken 저장, 기존 row revoke).
+ */
+export const AuthRefreshRequestSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+export type AuthRefreshRequest = z.infer<typeof AuthRefreshRequestSchema>;
+
+export const AuthRefreshResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+});
+export type AuthRefreshResponse = z.infer<typeof AuthRefreshResponseSchema>;

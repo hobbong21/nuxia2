@@ -36,9 +36,17 @@ export class PaymentService {
       throw new NotFoundException({ code: 'ORDER_NOT_FOUND', message: 'Order not found' })
     }
 
+    // v0.2-N3: Idempotent replay — 이미 PAID 이고 paymentId 가 일치하면
+    // 레퍼럴 재분배 없이 기존 상태만 반환.
     if (order.status === OrderStatus.PAID && order.paymentId === paymentId) {
-      // Idempotent replay
-      return this.buildConfirmResponse(order, 'idempotent replay')
+      return this.buildConfirmResponse(order, 'idempotent replay', true)
+    }
+    // v0.2-N3: PAID 인데 paymentId 가 다르면 명확한 409 로 거절 (금액 재검증도 불가).
+    if (order.status === OrderStatus.PAID && order.paymentId !== paymentId) {
+      throw new ConflictException({
+        code: 'PAYMENT_ID_MISMATCH',
+        message: `Order already paid with different paymentId (order=${order.paymentId}, body=${paymentId})`,
+      })
     }
     if (order.status !== OrderStatus.PENDING_PAYMENT) {
       throw new ConflictException({
@@ -93,8 +101,8 @@ export class PaymentService {
     return this.buildConfirmResponse(updated, 'payment confirmed')
   }
 
-  private buildConfirmResponse(order: any, message: string) {
-    // shared-types PaymentConfirmResponseSchema 와 매칭
+  private buildConfirmResponse(order: any, message: string, alreadyPaid = false) {
+    // shared-types PaymentConfirmResponseSchema 와 매칭 (v0.2-N3: alreadyPaid 추가)
     const statusMap: Record<string, 'PAID' | 'PENDING_PAYMENT' | 'CANCELLED' | 'FAILED'> = {
       PAID: 'PAID',
       PENDING_PAYMENT: 'PENDING_PAYMENT',
@@ -106,6 +114,7 @@ export class PaymentService {
       status,
       amountPaidKrw: bi(order.totalAmountKrw),
       message,
+      ...(alreadyPaid ? { alreadyPaid: true } : {}),
     }
   }
 

@@ -61,34 +61,28 @@ nuxia2/
 ## 빠른 시작
 
 ### 요구 사항
-- Node.js >= 20
-- pnpm >= 9
-- PostgreSQL 15+ (또는 Docker)
-- Redis 6+ (또는 Docker)
+- Node.js >= 20, pnpm >= 9
+- Docker Desktop (권장) 또는 PostgreSQL 15+ · Redis 6+ 직접 설치
 
-### 설치
+### Docker Compose로 30초 시작
 
 ```bash
 git clone https://github.com/hobbong21/nuxia2.git
 cd nuxia2
+cp .env.docker.example .env
+cp apps/api/.env.example apps/api/.env.local   # JWT_SECRET 등 32자 키 교체
+make up                                         # postgres + redis 기동
 pnpm install
-cp apps/api/.env.example apps/api/.env.local
-# .env.local 편집 후
-pnpm --filter @nuxia/api exec prisma migrate dev
-pnpm --filter @nuxia/api exec prisma db seed   # (선택)
+make db-migrate && make db-seed
 ```
 
-### 개발 실행
-
+개발 서버 (터미널 2개):
 ```bash
-# 터미널 1: API
-pnpm --filter @nuxia/api dev
-
-# 터미널 2: Web
-pnpm --filter @nuxia2/web dev
+pnpm --filter @nuxia2/api dev   # http://localhost:4000
+pnpm --filter @nuxia2/web dev   # http://localhost:3000
 ```
 
-더 자세한 단계별 가이드: [`docs/QUICKSTART.md`](docs/QUICKSTART.md)
+단계별 상세·Docker 미사용 수동 설치·에러 해결: [`docs/QUICKSTART.md`](docs/QUICKSTART.md)
 
 ### 하이브리드앱 빌드
 

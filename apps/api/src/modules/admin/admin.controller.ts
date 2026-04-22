@@ -18,13 +18,31 @@ export class AdminController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.svc.listAbuseLogs({
       kind,
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
       limit: limit ? Number(limit) : undefined,
+      cursor,
     })
+  }
+
+  /** v0.2 S2 — 3-depth referral tree for admin inspection */
+  @Get('users/:id/tree')
+  userTree(@Param('id') id: string) {
+    return this.svc.getUserTree(id)
+  }
+
+  /** v0.2 S2 — 어뷰징 심사 전환 (status=UNDER_REVIEW) */
+  @Post('users/:id/flag')
+  flagUser(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.svc.flagUser(id, req.user.userId, body.reason)
   }
 
   @Post('users/:id/mark-staff')

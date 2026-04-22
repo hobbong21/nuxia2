@@ -1,0 +1,53 @@
+# Docker build context 경량화
+# 주의: Dockerfile은 backend-engineer 스코프(apps/api/). 본 파일은 루트 compose
+#       profiles 'full' 기동 시 빌드 컨텍스트 전송량을 줄이기 위한 사전 정리.
+
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+**/dist/
+**/.next/
+
+# Environment (비밀 유출 방지)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs / workspace (런타임 불필요)
+docs/
+_workspace/
+_workspace_prev/
+.claude/
+
+# Mobile native 프로젝트 (컨테이너 빌드 대상 아님)
+apps/mobile/ios/
+apps/mobile/android/
+
+# Logs / 테스트 커버리지
+*.log
+coverage/
+.nyc_output/
+
+# Prisma 로컬 DB
+apps/api/prisma/migrations/dev.db
+
+# CI
+.github/
