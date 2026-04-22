@@ -36,6 +36,9 @@ _workspace_prev/
 # Prisma
 apps/api/prisma/migrations/dev.db
 
+# Generated OpenAPI spec (produced by `pnpm --filter @nuxia/api run export:openapi`)
+apps/api/openapi.json
+
 # Test / Coverage
 coverage/
 .nyc_output/

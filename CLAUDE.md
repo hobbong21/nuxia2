@@ -22,3 +22,5 @@
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-04-21 | 초기 구성 — 에이전트 5인(analyst/designer/frontend/backend/qa) + 스킬 7종(requirements-spec / nuxia-design-extract / nextjs-capacitor-build / commerce-api-build / referral-engine / cross-boundary-qa / nuxia-commerce-orchestrator) + CLAUDE.md | 전체 하네스 | 신규 프로젝트 구축 |
+| 2026-04-21 | T1-T8 정책 확정 + Phase 2 구현 + Phase 3 QA v1/v2 fix loop (21건 resolved) | backend/frontend/qa 전원 | Phase 3 QA CLEAR |
+| 2026-04-21 | Phase 4 통합 릴리스 v0.1.0 — README 전면 보강, CHANGELOG, RELEASE_NOTES, OpenAPI export 스크립트, Capacitor 빌드 가이드 | docs + apps/api/scripts | v0.1.0 릴리스 기반 완성 |
