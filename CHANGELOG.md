@@ -7,12 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned (v0.3)
-- 관리자 대시보드 UI (AbuseLog 조회, 수동 심사 승인 워크플로)
-- `apps/api/Dockerfile` + `apps/web/Dockerfile` (multi-stage) — 현재 compose `full` profile은 빌드파일 추가 후 활성
-- GitHub Actions CI (`.github/workflows/`): Postgres service container + E2E 실행
-- Webhook E2E 테스트 (포트원 서명 + idempotency) — 현재는 단위만
-- `ltree` 확장 기반 대규모 트리 조회 최적화 (>100k 노드 전제)
+### Planned (v0.4)
+- 실제 JWT 세션 → 관리자 쿠키 role 가드 통합
+- 관리자 2FA (TOTP) UI (스키마만 v0.3에서 준비)
+- Capacitor Android 빌드 자동화 워크플로
+- `/metrics` 엔드포인트 (prom-client) + counters
+- Audit log 래퍼 서비스로 관리자 API 호출 일관화
+- Correlation-id를 PortOne outbound 요청 헤더에도 forward
+
+### Planned feature polish (v0.3.x 후속)
+- Cart/checkout 배송지 입력 플로우 UI
+- 상품 필터/검색 (categoryName 기반)
+- 결제 수단 선택 UI (카드/계좌이체/간편결제)
+
+---
+
+## [0.3.0] - 2026-04-21
+
+운영 관리 + 컨테이너 재현 + CI 자동화. v0.2 위에 관리자 가시성, 2종 Dockerfile, GitHub Actions, Webhook E2E, 구조화 로그를 추가.
+
+### Added
+
+- **관리자 화면 skeleton** (M1):
+  - 라우트 5개: `/admin`, `/admin/abuse-logs`, `/admin/users`, `/admin/users/:id`, `/admin/payouts`
+  - 컴포넌트 7개: Sidebar, DataTable(커서 페이지네이션), AbuseKindBadge(5종 3중 인코딩), AdminKpiCard, UserTreePanel, FlagUserButton, ReleaseMinorButton
+  - 기본 다크 테마 (`zinc-950/900/800` 팔레트)
+  - `apps/web/middleware.ts`: `nx_role=ADMIN` 쿠키 가드, `NEXT_PUBLIC_ADMIN_BYPASS=1` 개발 우회 (프로덕션 빌드 무시)
+  - `apps/web/lib/admin-client.ts` 8 메서드, `USE_MOCK` 게이트로 BE 미기동 시 UI 확인 가능
+  - Mock 데이터 36개 (abuse logs 20 + users 10 + payouts 5 + tree 1)
+- **Dockerfile 2종** (M2):
+  - `apps/api/Dockerfile` — multi-stage 4 (base/deps/build/runtime), node:20-alpine, pnpm@9, Prisma generate + Nest build, non-root, HEALTHCHECK `/health`
+  - `apps/web/Dockerfile` — multi-stage 4, Next.js standalone output, non-root
+  - `.dockerignore` 각 앱에 추가
+  - `apps/web/next.config.mjs` HYBRID 분기 (`HYBRID_BUILD=1` → export, 기본 → standalone)
+- **GitHub Actions CI** (M3):
+  - `.github/workflows/ci.yml`: 3 job (typecheck / lint / e2e)
+  - E2E job은 `postgres:16-alpine` + `redis:7-alpine` service container + `prisma migrate deploy` + `vitest run`
+  - `.github/workflows/docker-build.yml`: main+tag push → GHCR buildx (api/web 병렬, type=gha cache)
+- **Webhook E2E 테스트** (M4):
+  - `apps/api/test/webhook-portone.test.ts` 6 it (유효 HMAC / 무효 / idempotent / eventType 분리 / dev bypass / prod 거부)
+  - 총 테스트 **40 it** (v0.2 34 + 6)
+- **Health 엔드포인트** (Dockerfile 정합):
+  - `GET /health` (liveness, uptime)
+  - `GET /health/ready` (readiness, DB 연결 확인)
+- **구조화 로그** (S1):
+  - `apps/api/src/common/logger/logger.config.ts` — `NODE_ENV=production` JSON / 그 외 pino-pretty 분기
+  - `correlation-id.interceptor.ts` + `AsyncLocalStorage` — 요청 단위 correlation-id (Node 내장 `crypto.randomUUID()`, 신규 deps 0)
+- **루트 `package.json`**: `pnpm -r --if-present run {typecheck,lint,test}` 통합 스크립트
+- **`docker-compose.yml` full profile 활성**: api/web 서비스에 환경변수 블록 하드코딩, `env_file` optional, 네트워크 이름 명시
+
+### Changed
+
+- **BREAKING (v0.2 → v0.3)**: `product.controller`의 `?categoryId=` legacy fallback 삭제. `?categoryName=`만 수용 (shared-types와 단일 소스).
+- `apps/web/next.config.mjs` standalone 기본값 (Docker 런타임 지원)
+- `apps/api/src/app.module.ts`: `LoggerModule` + `HealthModule` 등록, `bufferLogs: true` (`main.ts`)
+
+### Fixed
+
+- `shared-types/src/referral.ts` `TreeNodeSchema.children`의 `.default([])` 제거 — `z.ZodType<TreeNode>` 타입 정합 맞춤 (`tsc --noEmit` CLEAN)
+
+### Infrastructure
+
+- `apps/web/public/.gitkeep` — Dockerfile COPY 실패 방지
+- `pino-pretty ^11.2.2` devDep (backend logger pretty 분기 전용)
+
+### Non-goals (deferred to v0.4)
+
+- 실제 JWT 세션 ↔ admin role cookie 통합
+- 관리자 2FA UI
+- `/metrics` 엔드포인트
+- Audit log 일관화
+- Capacitor Android CI
+
+### Non-blocker residuals
+
+- `apps/web/app/(admin)/admin/` 폴더 중첩 (route group + URL segment) — URL `/admin/*`은 정상, 빌드·컴파일 영향 없음
+- 트리 인라인 플래그 오버레이는 현재 패널 상단 요약으로만 표시 (`ReferralTreeNode.renderBadge` slot 도입 시 개선)
+- Admin API 일부(`getKpi`, `getUsers` 검색, `getUser` 단건, `getPayouts` 목록, `flagUser`) BE 엔드포인트 합의 필요 — 현재 FE는 mock으로 돌아감
+- Preview 렌더러 일시 행업 (Chrome DevTools protocol 이슈) — innerText 검증으로 보완
 
 ---
 

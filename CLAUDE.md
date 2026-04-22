@@ -26,3 +26,4 @@
 | 2026-04-21 | Phase 4 통합 릴리스 v0.1.0 — README 전면 보강, CHANGELOG, RELEASE_NOTES, OpenAPI export 스크립트, Capacitor 빌드 가이드 | docs + apps/api/scripts | v0.1.0 릴리스 기반 완성 |
 | 2026-04-21 | v0.2.0 스프린트 — 실 Prisma 마이그레이션(360줄) + seed.ts(23 레코드) + docker-compose + Makefile + vitest E2E(34 it) + JWT refresh + Admin API 확장 + N1/N2/N3 non-blocker 해소 | backend/infra(general-purpose)/qa 병렬 + route 수정 | 로컬 실행 가능 + 자동화 검증 |
 | 2026-04-21 | Frontend dev server 부팅 검증 — `(mypage)` 라우트 그룹이 `(shop)` 루트와 충돌 → `mypage/` 세그먼트로 변경. pnpm install 823 packages. 홈/대시보드/트리/가입/초대 렌더링 스크린샷 확인 | apps/web/app/mypage/ | 라우팅 충돌 수정 + v0.2 UI 렌더링 검증 |
+| 2026-04-21 | v0.3.0 스프린트 — Admin UI 5 라우트+7 컴포넌트(다크, 3중 인코딩) + Dockerfile 2종 + GitHub Actions CI 2종 + Webhook E2E 6 it(총 40 it) + categoryId legacy 제거 + /health 엔드포인트 + pino 구조화 로그 + correlation-id | frontend/backend/infra 병렬 | 운영 가시성 + 컨테이너 재현 + CI 게이트 |
