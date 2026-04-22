@@ -86,11 +86,14 @@ const AdminUserSchema = z.object({
 });
 export type AdminUserRow = z.infer<typeof AdminUserSchema>;
 
+// `cursor` 헬퍼는 명시적인 required 타입을 보장한다.
+// ZodTypeAny 경로에서 zod 추론이 optional 로 표시되는 edge case를 피하기 위해
+// 반환 타입 자체를 직접 기술한다.
 function cursor<T extends z.ZodTypeAny>(itemSchema: T) {
   return z.object({
     items: z.array(itemSchema),
     nextCursor: z.string().nullable(),
-  });
+  }) as z.ZodType<{ items: z.infer<T>[]; nextCursor: string | null }>
 }
 
 const PaginatedAdminUsersSchema = cursor(AdminUserSchema);

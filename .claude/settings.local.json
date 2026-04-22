@@ -20,7 +20,10 @@
       "Bash(docker compose:*)",
       "Bash(pnpm exec:*)",
       "Bash(ls *.ts)",
-      "Bash(grep -l \"Get\\\\|Controller\" app.module.ts)"
+      "Bash(grep -l \"Get\\\\|Controller\" app.module.ts)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh auth:*)"
     ]
   }
 }
