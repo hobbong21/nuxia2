@@ -49,6 +49,9 @@ services:
       PORT: "4000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-nuxia2}:${POSTGRES_PASSWORD:-nuxia2_dev}@postgres:5432/${POSTGRES_DB:-nuxia2}?schema=public
       REDIS_URL: redis://redis:6379
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev_admin_api_key}
+      METRICS_INTERNAL_SECRET: ${METRICS_INTERNAL_SECRET:-dev_metrics_secret}
+      TOTP_ISSUER: ${TOTP_ISSUER:-Nuxia2-Dev}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -70,6 +73,7 @@ services:
       # Note: NEXT_PUBLIC_* must be available at build time for baked-in values.
       # This var supports server-side fetches at runtime within the compose network.
       NEXT_PUBLIC_API_BASE_URL: http://api:4000
+      NEXT_PUBLIC_USE_MOCK: ${NEXT_PUBLIC_USE_MOCK:-0}
     depends_on:
       api: { condition: service_started }
     ports:

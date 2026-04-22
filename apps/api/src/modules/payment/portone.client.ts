@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common'
+import { currentCorrelationId } from '../../common/logger/correlation-id.store'
 
 /**
  * Thin wrapper around PortOne V2 server SDK.
@@ -27,7 +28,7 @@ export class PortOneClient {
 
   async getPayment(paymentId: string): Promise<PortOnePayment> {
     const res = await fetch(`https://api.portone.io/payments/${encodeURIComponent(paymentId)}`, {
-      headers: { Authorization: `PortOne ${this.apiSecret}` },
+      headers: outboundHeaders({ Authorization: `PortOne ${this.apiSecret}` }),
     })
     if (!res.ok) {
       throw new Error(`PortOne getPayment failed: ${res.status}`)
@@ -53,16 +54,25 @@ export class PortOneClient {
       `https://api.portone.io/payments/${encodeURIComponent(paymentId)}/cancel`,
       {
         method: 'POST',
-        headers: {
+        headers: outboundHeaders({
           'Content-Type': 'application/json',
           Authorization: `PortOne ${this.apiSecret}`,
-        },
+        }),
         body: JSON.stringify(body),
       },
     )
     if (!res.ok) throw new Error(`PortOne cancelPayment failed: ${res.status}`)
     return (await res.json()) as { status: string }
   }
+}
+
+/**
+ * v0.4 S1 — outbound 요청에 correlation-id 를 `X-Request-Id` 로 전달.
+ * 로컬 ALS 에 correlation-id 가 있을 때만 헤더 추가.
+ */
+function outboundHeaders(base: Record<string, string>): Record<string, string> {
+  const cid = currentCorrelationId()
+  return cid ? { ...base, 'X-Request-Id': cid } : base
 }
 
 export function coerceAmountToNumber(amount: bigint): number {

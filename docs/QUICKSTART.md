@@ -193,6 +193,27 @@ Redis가 실행 중이 아닙니다. `make up` 또는 수동 기동.
 
 ---
 
+## v0.4 새 환경 변수
+
+### Backend
+- `ADMIN_API_KEY` — (선택) 관리자 API 2단 가드. 설정 시 `/admin/*` 요청에 `X-Admin-Api-Key` 헤더 필수.
+- `METRICS_INTERNAL_SECRET` — 프로덕션 `/metrics` 엔드포인트 접근 제어.
+- `TOTP_ISSUER` — Google Authenticator 등에 표시될 이름.
+
+### Frontend
+- `NEXT_PUBLIC_USE_MOCK` — `1`로 설정하면 admin-client가 mock 데이터 반환 (BE 미기동 시 UI 확인용).
+
+### 2FA 활성화
+1. 로그인 후 `/mypage/security` 이동
+2. "2단계 인증 설정" 클릭 → QR 스캔 → 6자리 코드 입력
+3. 다음 로그인부터 2단계 코드 요구
+
+### /metrics 접근
+- 개발: `curl http://localhost:4000/metrics` (공개)
+- 프로덕션: `curl -H "X-Internal-Secret: <값>" https://api.nuxia2.kr/metrics`
+
+---
+
 ## 다음 단계
 
 - 하이브리드앱 빌드: [`apps/mobile/README.md`](../apps/mobile/README.md)

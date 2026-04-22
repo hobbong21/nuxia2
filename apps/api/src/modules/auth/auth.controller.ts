@@ -1,6 +1,15 @@
-import { Body, Controller, Post, Req } from '@nestjs/common'
-import { ApiTags } from '@nestjs/swagger'
+import {
+  Body,
+  Controller,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common'
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
+import { TotpService } from './totp.service'
+import { JwtAuthGuard } from '../../common/guards/auth.guard'
 import { z } from 'zod'
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe'
 
@@ -29,10 +38,42 @@ export const RefreshSchema = z.object({
 })
 export type RefreshDto = z.infer<typeof RefreshSchema>
 
+export const TotpVerifySchema = z.object({
+  code: z.string().regex(/^\d{6}$/, 'TOTP code must be 6 digits'),
+})
+export type TotpVerifyDto = z.infer<typeof TotpVerifySchema>
+
+export const TotpLoginSchema = z.object({
+  userId: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/),
+})
+export type TotpLoginDto = z.infer<typeof TotpLoginSchema>
+
+/**
+ * v0.4 M2 — 로그인 성공 + role=ADMIN 일 때 Set-Cookie 로 `nx_role=ADMIN` 발급.
+ * HttpOnly + SameSite=Lax, prod 에서는 Secure.
+ */
+function setAdminRoleCookie(res: any, role: string) {
+  if (!res?.setHeader) return
+  if (role !== 'ADMIN') return
+  const parts = [
+    'nx_role=ADMIN',
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=3600',
+  ]
+  if (process.env.NODE_ENV === 'production') parts.push('Secure')
+  res.setHeader('Set-Cookie', parts.join('; '))
+}
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly totp: TotpService,
+  ) {}
 
   @Post('signup')
   async signup(@Body(new ZodValidationPipe(SignupSchema)) body: SignupDto, @Req() req: any) {
@@ -40,12 +81,72 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body(new ZodValidationPipe(LoginSchema)) body: LoginDto, @Req() req: any) {
-    return this.auth.login(body, req.headers?.['user-agent'], req.ip)
+  async login(
+    @Body(new ZodValidationPipe(LoginSchema)) body: LoginDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res: any,
+  ) {
+    const out = await this.auth.login(body, req.headers?.['user-agent'], req.ip)
+    if ('accessToken' in out && (out as any).role) {
+      setAdminRoleCookie(res, (out as any).role)
+    }
+    return out
   }
 
   @Post('refresh')
   async refresh(@Body(new ZodValidationPipe(RefreshSchema)) body: RefreshDto, @Req() req: any) {
     return this.auth.refresh(body.refreshToken, req.ip, req.headers?.['user-agent'])
+  }
+
+  // -------------------------------------------------------------------------
+  // v0.4 M5-BE — 2FA (TOTP)
+  // -------------------------------------------------------------------------
+
+  @Post('2fa/setup')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async totpSetup(@Req() req: any) {
+    return this.totp.generateSecret(req.user.userId)
+  }
+
+  @Post('2fa/verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async totpVerify(
+    @Req() req: any,
+    @Body(new ZodValidationPipe(TotpVerifySchema)) body: TotpVerifyDto,
+  ) {
+    return this.totp.verifyAndEnable(req.user.userId, body.code)
+  }
+
+  @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async totpDisable(
+    @Req() req: any,
+    @Body(new ZodValidationPipe(TotpVerifySchema)) body: TotpVerifyDto,
+  ) {
+    return this.totp.disable(req.user.userId, body.code)
+  }
+
+  /**
+   * 2FA 활성 계정의 로그인 2단계. 1단계에서 `{ needsTotp, userId }` 를 받은
+   * 클라이언트가 userId + 6자리 code 로 최종 session 획득.
+   */
+  @Post('2fa/login')
+  async totpLogin(
+    @Body(new ZodValidationPipe(TotpLoginSchema)) body: TotpLoginDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res: any,
+  ) {
+    const out = await this.auth.loginWithTotp(
+      body.userId,
+      body.code,
+      (uid, c) => this.totp.verifyCode(uid, c),
+      req.headers?.['user-agent'],
+      req.ip,
+    )
+    if ((out as any).role) setAdminRoleCookie(res, (out as any).role)
+    return out
   }
 }

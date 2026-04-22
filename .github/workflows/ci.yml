@@ -75,6 +75,9 @@ jobs:
       PORTONE_WEBHOOK_SECRET: test_portone_webhook_secret
       APP_ENCRYPTION_KEY: test_enc_key_32bytes_minimum_xxxxxxxxxx
       NODE_ENV: test
+      ADMIN_API_KEY: test_admin_api_key_v4
+      METRICS_INTERNAL_SECRET: test_metrics_internal_secret
+      TOTP_ISSUER: Nuxia2-Test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

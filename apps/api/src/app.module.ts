@@ -15,14 +15,18 @@ import { PayoutModule } from './modules/payout/payout.module'
 import { WebhookModule } from './modules/webhook/webhook.module'
 import { AdminModule } from './modules/admin/admin.module'
 import { HealthModule } from './modules/health/health.module'
+import { AuditModule } from './modules/audit/audit.module'
+import { MetricsModule } from './modules/metrics/metrics.module'
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
-    // v0.3 S1: pino 기반 구조화 로그. 개발=pretty, 프로덕션=JSON.
     LoggerModule.forRoot(buildLoggerConfig()),
     PrismaModule,
+    // v0.4 M3/M4: 전역 모듈 (metrics/audit) — 다른 피처 모듈이 DI 로 사용.
+    AuditModule,
+    MetricsModule,
     AuthModule,
     UserModule,
     ProductModule,

@@ -124,8 +124,14 @@ model User {
   ancestorPath       String[]
 
   withdrawnAt        DateTime?
+  lastLoginAt        DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
+
+  // v0.4 M5 — 2FA (TOTP). totpSecret 은 AES-256-GCM 암호화 저장.
+  totpSecret         String?
+  totpEnabled        Boolean    @default(false)
+  totpEnabledAt      DateTime?
 
   orders             Order[]
   ledgers            ReferralLedger[] @relation("Beneficiary")

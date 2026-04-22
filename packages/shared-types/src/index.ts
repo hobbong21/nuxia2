@@ -8,3 +8,4 @@ export * from './product';
 export * from './order';
 export * from './referral';
 export * from './payment';
+export * from './admin';

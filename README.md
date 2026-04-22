@@ -15,6 +15,9 @@ Nuxia 디자인 톤의 모바일 퍼스트 반응형 커머스 웹 + Capacitor i
 - **레퍼럴 엔진**: 재귀 CTE 기반 3세대 트리, `floor(총액 × bps / 10000)` BigInt 정수 연산, 환불 시 역정산(REVERT) 원장
 - **어뷰징 방지**: `ci` UNIQUE + 셀프레퍼럴 체인 검사 + 순환참조 post-insert 검증 + 탈퇴 쿨다운 30일 + STAFF 참여 차단
 - **하이브리드앱**: Next.js 정적 export → Capacitor 래핑, 딥링크 `nuxia2://referral/{code}`
+- **2단계 인증 (TOTP)** — Google Authenticator, Authy 호환
+- **Prometheus /metrics** — 5개 커스텀 카운터 + Node.js 기본 메트릭
+- **Audit log** — 관리자 행위 자동 기록
 
 ## 아키텍처
 

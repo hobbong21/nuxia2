@@ -45,6 +45,7 @@ export default async function MyPage() {
             { href: '/mypage/addresses', label: '배송지 관리' },
             { href: '/mypage/coupons', label: '쿠폰 / 포인트' },
             { href: '/mypage/payouts', label: '정산 계좌 등록', warn: true },
+            { href: '/mypage/security', label: '보안 (2단계 인증)' },
             { href: '/help', label: '고객센터' },
           ].map((item) => (
             <Link

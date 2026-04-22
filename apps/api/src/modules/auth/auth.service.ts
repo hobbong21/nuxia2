@@ -76,6 +76,12 @@ export class AuthService {
     }
   }
 
+  /**
+   * v0.4 M5 — 2FA 통합 로그인.
+   * - TOTP 활성 계정: `{ needsTotp: true, userId }` 1단계 응답. 이후
+   *   `loginWithTotp(userId, code)` 로 2단계 완료.
+   * - 일반 계정: 기존과 동일.
+   */
   async login(input: LoginInput, userAgent?: string, ip?: string) {
     const user = await this.prisma.user.findUnique({ where: { email: input.email } })
     if (!user || !user.passwordHash) {
@@ -87,12 +93,57 @@ export class AuthService {
     if (user.status === 'WITHDRAWN' || user.status === 'BANNED') {
       throw new UnauthorizedException({ code: 'USER_INACTIVE', message: 'Account not available' })
     }
+    if ((user as any).totpEnabled) {
+      return { needsTotp: true as const, userId: user.id }
+    }
+    return this.issueSessionForUser(user, ip, userAgent)
+  }
+
+  /**
+   * v0.4 M5 — 2FA 로그인 2단계. 1단계 통과 증빙이 없는 단순 userId+code 이므로
+   * 호출자는 짧은 창 내에서만 유효한 이 엔드포인트를 rate-limit 해야 한다.
+   */
+  async loginWithTotp(
+    userId: string,
+    code: string,
+    totpVerify: (uid: string, c: string) => Promise<boolean>,
+    userAgent?: string,
+    ip?: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' })
+    }
+    if (!(user as any).totpEnabled) {
+      throw new UnauthorizedException({
+        code: 'TOTP_NOT_ENABLED',
+        message: '2FA is not enabled for this user',
+      })
+    }
+    const ok = await totpVerify(userId, code)
+    if (!ok) {
+      throw new UnauthorizedException({ code: 'TOTP_INVALID', message: 'Invalid TOTP code' })
+    }
+    return this.issueSessionForUser(user, ip, userAgent)
+  }
+
+  private async issueSessionForUser(user: any, ip?: string, userAgent?: string) {
     const accessToken = this.issueAccessToken(user.id, user.role)
     const refreshToken = await this.issueRefreshToken(user.id, ip, userAgent)
+    // best-effort lastLoginAt update
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() } as any,
+      })
+    } catch {
+      /* ignore */
+    }
     return {
       accessToken,
       refreshToken,
       user: serializeUser(user),
+      role: user.role as string,
     }
   }
 
