@@ -17,7 +17,13 @@ const nextConfig = {
             { protocol: 'https', hostname: '**' },
           ],
         },
-        allowedDevOrigins: ['*.replit.dev', '*.replit.app'],
+        allowedDevOrigins: [
+          '*.replit.dev',
+          '*.replit.app',
+          '*.spock.replit.dev',
+          '*.picard.replit.dev',
+          '*.repl.co',
+        ],
       }),
 };
 
