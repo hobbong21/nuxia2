@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Nuxia Commerce × 3-generation Referral (monorepo)",
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
@@ -19,5 +19,15 @@
   "engines": {
     "node": ">=20.12.0",
     "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "msgpackr-extract",
+      "prisma"
+    ]
   }
 }

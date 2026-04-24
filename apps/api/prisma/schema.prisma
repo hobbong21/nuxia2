@@ -193,17 +193,17 @@ model Product {
   slug               String         @unique
   name               String
   description        String         @default("")
-  /** 정가 (KRW) */
+  /// 정가 (KRW)
   listPriceKrw       BigInt
-  /** 할인 후 판매가 (KRW) */
+  /// 할인 후 판매가 (KRW)
   salePriceKrw       BigInt
-  /** 0~100 정수 할인율. listPrice / salePrice 로 계산 가능하나 캐시 컬럼 */
+  /// 0~100 정수 할인율. listPrice / salePrice 로 계산 가능하나 캐시 컬럼
   discountPct        Int            @default(0)
   brandName          String?
   stock              Int            @default(0)
   category           String?
   images             String[]
-  /** 레퍼럴 적립률 프리뷰용 (bps. 2500 = 25% 합계 표시 등) */
+  /// 레퍼럴 적립률 프리뷰용 (bps. 2500 = 25% 합계 표시 등)
   referralPreviewBps Int?           @default(2500)
   avgRating          Float          @default(0)
   reviewCount        Int            @default(0)
