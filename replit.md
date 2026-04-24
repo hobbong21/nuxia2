@@ -16,6 +16,19 @@ A Korean e-commerce platform with a 3-generation referral/commission system. Bui
 - **Workflow**: "Start application" — installs deps and runs `next dev -p 5000 -H 0.0.0.0`
 - **Database**: Replit PostgreSQL (DATABASE_URL auto-provisioned). All migrations applied.
 
+## Build & Deploy
+- **TypeScript**: All type errors resolved. `pnpm typecheck` passes clean.
+- **Production build**: `cd apps/web && pnpm build` succeeds. All 22 pages compile as dynamic (`ƒ`).
+- **Key fixes applied**:
+  - `app/layout.tsx`: `export const dynamic = 'force-dynamic'` — disables static prerendering for auth-heavy app
+  - `pages/_error.tsx`: Custom Pages Router error page to prevent `<Html>` import error on `/404` and `/500`
+  - `app/(shop)/checkout/success/page.tsx`, `app/(shop)/products/page.tsx`: `useSearchParams()` null guards (`?.`)
+  - `components/admin/Sidebar.tsx`, `components/commerce/TabBar.tsx`: `usePathname()` null guards
+  - `components/native-bootstrap.tsx`: `pathname !== null` guard before `.includes()`
+  - Capacitor packages added as devDependencies
+  - `next.config.mjs`: `allowedDevOrigins` includes `*.spock.replit.dev`, `*.picard.replit.dev`, `*.repl.co`
+- **Deploy config**: autoscale, build=`cd apps/web && pnpm install && pnpm build`, run=`cd apps/web && pnpm start`
+
 ## Environment Variables
 Non-sensitive config is set in `.replit` `[userenv.shared]`. Secrets required:
 - `DATABASE_URL` — auto-provided by Replit PostgreSQL

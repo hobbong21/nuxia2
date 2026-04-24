@@ -23,9 +23,9 @@ export default function ProductsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const keyword = searchParams.get('q') ?? '';
-  const categoryName = searchParams.get('categoryName');
-  const sortRaw = searchParams.get('sortBy') as ProductSort | null;
+  const keyword = searchParams?.get('q') ?? '';
+  const categoryName = searchParams?.get('categoryName') ?? null;
+  const sortRaw = searchParams?.get('sortBy') as ProductSort | null;
   const sort: ProductSort = SORT_OPTIONS.some((o) => o.value === sortRaw)
     ? (sortRaw as ProductSort)
     : 'popular';
@@ -36,7 +36,7 @@ export default function ProductsPage() {
       categoryName?: string | null;
       sortBy?: ProductSort;
     }) => {
-      const next = new URLSearchParams(searchParams.toString());
+      const next = new URLSearchParams(searchParams?.toString() ?? '');
       if ('q' in patch) {
         if (patch.q && patch.q.trim()) next.set('q', patch.q.trim());
         else next.delete('q');

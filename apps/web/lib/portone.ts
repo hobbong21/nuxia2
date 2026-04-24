@@ -39,6 +39,7 @@ export async function requestPayment(
       ? Number(params.totalAmountKrw)
       : params.totalAmountKrw;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await PortOne.requestPayment({
     storeId,
     channelKey,
@@ -47,7 +48,7 @@ export async function requestPayment(
     totalAmount: amount,
     currency: 'KRW',
     customer: { customerId: params.customerId },
-  });
+  } as any);
 
   // SDK response 구조: { code?, message?, paymentId, ... }
   return {
@@ -74,12 +75,13 @@ export async function requestIdentityVerification(params: {
   const identityVerificationId =
     params.identityVerificationId ?? `iv_${crypto.randomUUID()}`;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await PortOne.requestIdentityVerification({
     storeId,
     channelKey,
     identityVerificationId,
-    customer: { id: params.userId },
-  });
+    customer: { customerId: params.userId },
+  } as any);
 
   return {
     identityVerificationId,

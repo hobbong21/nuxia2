@@ -9,7 +9,6 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-NODE_ENV = "development"
 PORT = "3000"
 API_BASE_URL = "http://localhost:3000"
 JWT_ACCESS_TTL = "2h"
@@ -25,6 +24,9 @@ MIN_PAYOUT_KRW = "10000"
 SMS_PROVIDER = "solapi"
 SMTP_FROM = "no-reply@nuxia2.kr"
 SMTP_PORT = "587"
+
+[userenv.development]
+NODE_ENV = "development"
 
 [workflows]
 runButton = "Project"

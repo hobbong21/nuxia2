@@ -21,8 +21,8 @@ export default function CheckoutSuccessPage() {
   const toast = useToast();
   const clearCart = useCartStore((s) => s.clear);
 
-  const paymentId = params.get('paymentId') ?? '';
-  const orderId = params.get('orderId') ?? '';
+  const paymentId = params?.get('paymentId') ?? '';
+  const orderId = params?.get('orderId') ?? '';
 
   const [status, setStatus] = React.useState<'pending' | 'success' | 'fail'>('pending');
   const [retryTick, setRetryTick] = React.useState(0);

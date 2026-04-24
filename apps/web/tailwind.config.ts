@@ -13,9 +13,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      colors: tokens.colors as Record<string, unknown>,
+      colors: tokens.colors as unknown as Record<string, string>,
       fontFamily: tokens.fontFamily as Record<string, string[]>,
-      fontSize: tokens.fontSize as Record<string, [string, Record<string, string>]>,
+      fontSize: tokens.fontSize as unknown as Record<string, [string, Record<string, string>]>,
       spacing: tokens.spacing as Record<string, string>,
       borderRadius: tokens.borderRadius as Record<string, string>,
       boxShadow: tokens.boxShadow as Record<string, string>,

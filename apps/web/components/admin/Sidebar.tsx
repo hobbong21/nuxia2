@@ -29,7 +29,7 @@ export function Sidebar() {
             const active =
               item.href === '/admin'
                 ? pathname === '/admin'
-                : pathname.startsWith(item.href);
+                : pathname?.startsWith(item.href) ?? false;
             return (
               <li key={item.href}>
                 <Link

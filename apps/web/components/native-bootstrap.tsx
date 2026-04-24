@@ -17,7 +17,7 @@ export function NativeBootstrap() {
     void initDeepLinks();
     void initKeyboardAdjustments();
     void initHardwareBackButton({
-      isRootRoute: () => ['/', '/products', '/dashboard', '/mypage'].includes(pathname),
+      isRootRoute: () => pathname !== null && ['/', '/products', '/dashboard', '/mypage'].includes(pathname),
       onRouterBack: () => router.back(),
       onToast: (msg) => toast.show(msg, 'info'),
       onAppExit: async () => {

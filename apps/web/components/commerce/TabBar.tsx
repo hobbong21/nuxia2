@@ -33,7 +33,7 @@ export function TabBar() {
           const active =
             tab.href === '/'
               ? pathname === '/'
-              : pathname.startsWith(tab.href);
+              : pathname?.startsWith(tab.href) ?? false;
           return (
             <li key={tab.href} className="flex-1">
               <Link
